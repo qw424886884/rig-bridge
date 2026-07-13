@@ -1,6 +1,6 @@
 bl_info = {
     "name": "Humanoid Remap Studio",
-    "author": "老王和小C",
+    "author": "帧给你你来K",
     "version": (0, 1, 59),
     "blender": (5, 1, 0),
     "location": "View3D > Sidebar > 重映射 > 人形重映射",

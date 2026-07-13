@@ -58,14 +58,12 @@ The generic retargeting path works without third-party add-ons. If Auto-Rig Pro 
 - Unusual rest poses or ambiguous forward axes may require cleanup before retargeting.
 - Compatibility coverage continues to expand across rig families and motion sources.
 
-## Author and Social Identity
+## Creator
 
-- **Creator name:** 老王和小C
-- **Public roles:** 老王 / 小C Agent
-- **GitHub:** [@qw424886884](https://github.com/qw424886884)
+- **Bilibili:** [帧给你你来K](https://space.bilibili.com/28424547/)
 - **About:** 老王和小C从真实三维问题出发，用 AI 把排查、验证和修复沉淀成可复用流程。
 
-Additional social profile links will be added to this section before the first public release.
+Bilibili is the only social profile published by this project.
 
 ## License
 
