@@ -1,0 +1,35 @@
+schema_version = "1.0.0"
+id = "humanoid_remap_studio"
+version = "0.1.59"
+name = "Humanoid Remap Studio"
+tagline = "Automatic humanoid retargeting with topology fallback"
+maintainer = "老王和小C"
+type = "add-on"
+tags = ["Rigging", "Animation"]
+website = "https://github.com/qw424886884/humanoid-remap-studio"
+
+blender_version_min = "5.1.0"
+
+license = [
+  "SPDX:GPL-3.0-or-later"
+]
+
+copyright = [
+  "2026 老王和小C"
+]
+
+[build]
+paths = [
+  "__init__.py",
+  "armature_scan.py",
+  "figure_layout.py",
+  "human_schema.py",
+  "matcher.py",
+  "preset_catalog.py",
+  "LICENSE",
+  "README.md",
+  "README_zh_CN.md",
+  "CHANGELOG.md",
+  "SECURITY.md",
+  "THIRD_PARTY.md"
+]

@@ -1,0 +1,72 @@
+# Humanoid Remap Studio
+
+[简体中文](README_zh_CN.md)
+
+Humanoid Remap Studio is a Blender add-on for automatic humanoid action retargeting. It recognizes known rig conventions first, then falls back to semantic names, hierarchy, body geometry, rest-pose checks, left/right structure, and forward-axis analysis.
+
+## Features
+
+- Automatic source and target humanoid recognition
+- Preset-first matching with topology fallback
+- Single-action and collection batch retargeting
+- Root-motion or in-place output
+- Rest-pose and body-forward validation
+- Transactional batch cleanup and persistent generated actions
+- Optional optimized FK workflow when Auto-Rig Pro is installed
+
+## Requirements
+
+- Blender 5.1 or newer
+- Two valid humanoid armatures for the generic workflow
+- Auto-Rig Pro is optional and is not bundled
+
+## Installation
+
+### Blender Extensions
+
+After approval on the Blender Extensions platform, install it from Blender Preferences > Get Extensions by searching for `Humanoid Remap Studio`.
+
+### Install from Disk
+
+1. Download the release ZIP from GitHub.
+2. Open Blender Preferences > Get Extensions.
+3. Open the menu and choose Install from Disk.
+4. Select the ZIP and enable the extension.
+
+## Quick Start
+
+1. Open the `Remap` tab in the 3D View sidebar.
+2. Choose a single animated armature or a collection of animated armatures.
+3. Choose the target humanoid armature.
+4. Run Auto Detect.
+5. Choose whether the result should stay in place.
+6. Run Retarget or Batch Retarget.
+
+Generated actions can be removed with Clear Results before running another test.
+
+## Privacy and Permissions
+
+The extension does not request network, file, clipboard, camera, or microphone permissions.
+
+## Compatibility
+
+The generic retargeting path works without third-party add-ons. If Auto-Rig Pro is installed and a compatible target is detected, Humanoid Remap Studio can use its runtime operators for an optimized FK bake. No Auto-Rig Pro files or source code are included.
+
+## Known Limits
+
+- Severely incomplete humanoid rigs are rejected instead of being guessed.
+- Unusual rest poses or ambiguous forward axes may require cleanup before retargeting.
+- Compatibility coverage continues to expand across rig families and motion sources.
+
+## Author and Social Identity
+
+- **Creator name:** 老王和小C
+- **Public roles:** 老王 / 小C Agent
+- **GitHub:** [@qw424886884](https://github.com/qw424886884)
+- **About:** 老王和小C从真实三维问题出发，用 AI 把排查、验证和修复沉淀成可复用流程。
+
+Additional social profile links will be added to this section before the first public release.
+
+## License
+
+Humanoid Remap Studio is licensed under the GNU General Public License v3.0 or later. See [LICENSE](LICENSE).
