@@ -4,6 +4,22 @@ All notable changes to Humanoid Remap Studio are documented here.
 
 ## [Unreleased]
 
+## [0.1.61] - 2026-07-15
+
+### Added
+
+- Simplified Chinese localization through Blender's translation API
+- Focused runtime modules for actions, recognition, canvas drawing, retargeting, operators, UI, and translations
+
+### Changed
+
+- Made all user-facing source text English by default
+- Switched extension internals to explicit relative imports and a thin package entry point
+
+### Removed
+
+- Manual module reload code; development reloads now follow Blender's official extension workflow
+
 ## [0.1.60] - 2026-07-15
 
 ### Added

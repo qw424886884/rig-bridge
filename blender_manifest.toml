@@ -1,6 +1,6 @@
 schema_version = "1.0.0"
 id = "humanoid_remap_studio"
-version = "0.1.60"
+version = "0.1.61"
 name = "Humanoid Remap Studio"
 tagline = "Automatic humanoid retargeting with topology fallback"
 maintainer = "帧给你你来K"
@@ -21,11 +21,18 @@ copyright = [
 [build]
 paths = [
   "__init__.py",
+  "actions.py",
   "armature_scan.py",
+  "canvas.py",
+  "core.py",
   "figure_layout.py",
   "human_schema.py",
   "matcher.py",
+  "operators.py",
   "preset_catalog.py",
+  "retarget.py",
+  "translations.py",
+  "ui.py",
   "LICENSE",
   "README.md",
   "README_zh_CN.md",

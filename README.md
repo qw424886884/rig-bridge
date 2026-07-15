@@ -51,6 +51,10 @@ Generated actions can be removed with Clear Results before running another test.
 
 The extension does not request network, file, clipboard, camera, or microphone permissions.
 
+## Package Structure
+
+The runtime is split into focused modules for action handling, rig recognition, the humanoid canvas, retargeting, operators, UI, and translations. The package entry point only owns registration and scene properties. All internal imports are package-relative, and development reloads use Blender's standard extension lifecycle rather than a custom module reloader.
+
 ## Compatibility
 
 The generic retargeting path works without third-party add-ons. If Auto-Rig Pro is installed and a compatible target is detected, Humanoid Remap Studio can use its runtime operators for an optimized FK bake. No Auto-Rig Pro files or source code are included.

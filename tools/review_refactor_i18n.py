@@ -1,0 +1,348 @@
+"""Convert public runtime strings to English and build zh-HANS translations."""
+
+from pathlib import Path
+import re
+
+
+ROOT = Path(__file__).resolve().parents[1]
+RUNTIME_FILES = (
+    "__init__.py",
+    "core.py",
+    "canvas.py",
+    "retarget.py",
+    "operators.py",
+    "ui.py",
+    "human_schema.py",
+)
+
+CN_TO_EN = {
+    "通用人形（拓扑）": "Generic Humanoid (Topology)",
+    " 不是骨架对象。": " is not an armature object.",
+    "请选择输入并点击自动识别。": "Select the input and click Auto Detect.",
+    "批量集合只允许包含带有效 Action 的人形骨架。": "The batch collection may contain only humanoid armatures with valid Actions.",
+    "未识别出完整的头、髋和双脚结构": "Could not identify a complete head, hips, and both feet structure",
+    "整体上下方向异常": "The overall up direction is invalid",
+    "躯干接近横向": "The torso is nearly horizontal",
+    "腿部方向与世界 Z 轴偏差过大": "The leg direction deviates too far from the world Z axis",
+    "。FBX 请启用自动骨骼方向；BVH 请检查前向/上向轴。": ". For FBX, enable Automatic Bone Orientation; for BVH, verify the forward and up axes.",
+    "FBX 请启用自动骨骼方向；BVH 请检查前向/上向轴。": "For FBX, enable Automatic Bone Orientation; for BVH, verify the forward and up axes.",
+    "动作骨架静止姿态异常：": "Source armature rest pose is invalid: ",
+    "。请检查导入轴向或对象旋转。": ". Check the import axes or object rotation.",
+    "目标骨架静止姿态异常：": "Target armature rest pose is invalid: ",
+    "未选择": "Not Selected",
+    "通用人形": "Generic Humanoid",
+    "原地状态会在执行前自动判断": "In-place motion will be evaluated before retargeting",
+    "源动作带位移，可切换原地动作": "The source Action contains root motion; In-Place is available",
+    "源动作基本原地，无需额外原地版": "The source Action is already in place; no extra variant is needed",
+    "请选择两套人形骨架。": "Select two humanoid armatures.",
+    "选择后点击自动识别。": "Click Auto Detect after selecting both armatures.",
+    "检测到中间重映射动作，已追溯原始来源：": "An intermediate retarget Action was detected; resolved original source: ",
+    "；将执行通用自动重映射流程。": "; the generic automatic retarget workflow will run.",
+    "将执行通用自动重映射流程。": "The generic automatic retarget workflow will run.",
+    "层级拓扑": "hierarchy and topology",
+    "预设库": "preset library",
+    "目标为 Auto-Rig Pro；来源通过": "The target is Auto-Rig Pro; the source was identified through ",
+    "识别。将执行 FK 自动重映射流程；": ". The automatic FK retarget workflow will run; ",
+    "识别。": " identification.",
+    "将执行 FK 自动重映射流程；": "The automatic FK retarget workflow will run; ",
+    "命中预设库：": "Preset match: ",
+    "通过层级特征识别为两套人形骨架；将执行通用自动重映射流程。": "Both rigs were identified as humanoid from hierarchy features; the generic automatic retarget workflow will run.",
+    "暂未命中稳定自动流程；请确认两套都是人形骨架。": "No stable automatic workflow was found. Confirm that both rigs are humanoid armatures.",
+    "未选择动作集合": "No source collection selected",
+    "未选择目标骨架": "No target armature selected",
+    "动作集合为空": "The source collection is empty",
+    "集合包含非骨架对象：": "The collection contains non-armature objects: ",
+    "目标骨架未通过人形核心结构检查": "The target armature failed the core humanoid structure check",
+    "不能把目标骨架放入动作集合": "The target armature cannot be included in the source collection",
+    "没有有效 Action": "No valid Action",
+    "人形核心结构不足：": "Insufficient core humanoid structure: ",
+    "静止姿态异常：": "Invalid rest pose: ",
+    "无法建立可靠前向": "Could not determine a reliable forward axis",
+    " 个动作 -> ": " Actions -> ",
+    " 通过集合门禁：": " passed batch validation: ",
+    "；将逐项执行预设优先、拓扑回退和坐标系自动对齐。": "; each Action will use preset-first recognition, topology fallback, and automatic axis alignment.",
+    "将逐项执行预设优先、拓扑回退和坐标系自动对齐。": "Each Action will use preset-first recognition, topology fallback, and automatic axis alignment.",
+    "批量集合未通过检查": "The batch collection failed validation",
+    "请选择动作集合和目标骨架。": "Select a source collection and target armature.",
+    "找不到人形槽位": "Humanoid mapping slot not found",
+    "请先选中一根 Pose/Edit 骨骼": "Select a Pose or Edit bone first",
+    "请先选择动作骨架": "Select a source armature first",
+    "未知骨架": "Unknown Armature",
+    "当前写入": "Current assignment: ",
+    "，但选中骨骼来自 ": ", but the selected bone belongs to ",
+    "；请选中 ": "; select a bone from ",
+    " 的骨骼": "",
+    "请先选择目标骨架": "Select a target armature first",
+    "动作骨架和目标骨架不能是同一个对象。": "The source and target armatures cannot be the same object.",
+    "动作骨架没有当前 Action，不能烘焙。": "The source armature has no active Action to bake.",
+    "核心映射不足：": "Insufficient core mapping: ",
+    "源 Action 没有可烘焙帧。": "The source Action has no frames to bake.",
+    "未检测到 Auto-Rig Pro Remap 运行属性，请先启用 Auto-Rig Pro。": "Auto-Rig Pro Remap runtime properties were not detected. Enable Auto-Rig Pro first.",
+    "动作骨架没有当前 Action，不能执行 ARP 重映射。": "The source armature has no active Action for Auto-Rig Pro retargeting.",
+    "ARP Build Bones List 失败：": "Auto-Rig Pro Build Bones List failed: ",
+    "ARP Mixamo FK 预设未生成有效映射：": "The Auto-Rig Pro Mixamo FK preset did not create a valid mapping: ",
+    "ARP Mixamo FK 映射没有唯一 root，请检查 Hips -> c_root_master.x。": "The Auto-Rig Pro Mixamo FK mapping has no unique root. Check Hips -> c_root_master.x.",
+    "ARP 重新定义静止姿态失败：": "Auto-Rig Pro rest-pose redefinition failed: ",
+    "ARP 重映射前源 Action 丢失。": "The source Action was lost before Auto-Rig Pro retargeting.",
+    "ARP Retarget 未生成目标 Action：": "Auto-Rig Pro Retarget did not create a target Action: ",
+    "请先指定动作骨架和目标骨架。": "Select a source and target armature first.",
+    "保留根位移": "Root Motion",
+    "源动作暂时无法生成原地预览，已保持原始动作。": "An in-place preview could not be created; the original source Action remains active.",
+    "已切换动作骨架为原地预览：": "Switched the source armature to the in-place preview: ",
+    "；已清理原地预览 ": "; removed in-place previews: ",
+    "已切回动作骨架原始位移动作：": "Restored the original root-motion Action on the source armature: ",
+    "请先选择动作骨架和目标骨架。": "Select a source and target armature first.",
+    "当前目标 Action 不是插件生成的重映射结果：": "The active target Action was not generated by this extension: ",
+    "没有找到插件生成的重映射结果。": "No retarget result generated by this extension was found.",
+    "已切换为": "Switched to ",
+    "；执行重映射后会生成可播放结果。": "; a playable result will be created after retargeting.",
+    "请先选择动作骨架。": "Select a source armature first.",
+    "请先选择动作集合和目标骨架。": "Select a source collection and target armature first.",
+    "当前集合没有插件生成的批量结果。": "The current collection has no batch results generated by this extension.",
+    "批量集合未通过检查。": "The batch collection failed validation.",
+    "：未命中稳定自动流程": ": no stable automatic workflow was found",
+    "批量重映射失败：": "Batch retarget failed: ",
+    "已完成批量重映射：": "Batch retarget completed: ",
+    " 个动作。": " Actions.",
+    "暂未命中稳定自动流程，请确认两套都是人形骨架。": "No stable automatic workflow was found. Confirm that both rigs are humanoid armatures.",
+    "重映射失败：": "Retarget failed: ",
+    "无需原地版": "No in-place variant needed",
+    "已完成自动重映射：": "Automatic retarget completed: ",
+    "；当前：": "; current variant: ",
+    "（已追溯：": " (resolved source: ",
+    "清除失败：": "Cleanup failed: ",
+    " 个批量结果。": " batch results.",
+    " 个": " items",
+    "已清除 ": "Removed ",
+    "未变更": "No Change",
+    "已清除重映射结果；已恢复源动作：": "Retarget result cleared; restored source Action: ",
+    "请在 3D 视图侧边栏中打开人形指认图": "Open the humanoid mapping figure from the 3D View sidebar",
+    "未找到 3D 视图窗口区域": "No 3D View window region was found",
+    "可控人形映射面板已打开：拖动标题栏移动，右下角缩放，左键点部位写入骨骼": "Humanoid mapping panel opened. Drag the title bar to move, resize from the lower-right corner, and click a body region to assign a bone.",
+    "当前没有选中骨架或骨骼": "No armature or bone is selected",
+    "请在 3D 视图中点击要使用的骨架，ESC 或右键取消": "Click an armature in the 3D View, or press Esc or right-click to cancel",
+    "这里没有吸取到骨架，请点骨架区域或按 ESC 取消": "No armature was picked here. Click an armature or press Esc to cancel.",
+    "人形图加载失败": "Failed to load the humanoid figure",
+    "显示手指槽位": "Show Finger Slots",
+    "打开人形校正面板": "Open Humanoid Correction Panel",
+    "最近部位: ": "Last Region: ",
+    "详细校正按钮": "Detailed Correction Buttons",
+    "动作骨骼": "Source Bones",
+    "目标骨骼": "Target Bones",
+    "未选中": "Nothing Selected",
+    "人形骨骼校正": "Humanoid Bone Correction",
+    "校正: ": "Assign: ",
+    "  当前: ": "  Current: ",
+    "拖动标题栏移动 / 右下角缩放 / 点击身体块写入 / X 或 ESC 关闭": "Drag title bar / Resize lower-right / Click body region / X or Esc to close",
+    "打开人形指认图": "Open Humanoid Mapping Figure",
+    "人形面板点击监听": "Humanoid Panel Interaction",
+    "初始化人形槽位": "Initialize Humanoid Slots",
+    "指认到该部位": "Assign to This Region",
+    "吸取骨架": "Pick Armature",
+    "优先使用当前选中的骨架/骨骼；没有合法选择时，进入吸管模式在 3D 视图中点选骨架": "Use the selected armature or bone when valid; otherwise pick an armature in the 3D View",
+    "目标": "Target",
+    "写入动作骨架": "Assign the Source Armature",
+    "写入目标骨架": "Assign the Target Armature",
+    "执行重映射": "Retarget",
+    "按当前人形映射把动作骨架的当前 Action 烘焙到目标骨架": "Bake the active source Action to the target armature using the detected humanoid mapping",
+    "清除结果": "Clear Result",
+    "清除当前目标骨架上的插件重映射结果，并恢复源骨架原始动作": "Remove the generated target Action and restore the original source Action",
+    "自动识别人形骨架": "Auto Detect Humanoid Rigs",
+    "覆盖手动指认": "Override Manual Assignments",
+    "人形重映射": "Humanoid Retarget",
+    "重映射": "Retarget",
+    "动作集合": "Source Collection",
+    "动作骨架": "Source Armature",
+    "目标骨架": "Target Armature",
+    "自动识别": "Auto Detect",
+    "选择动作集合和目标骨架": "Select a Source Collection and Target Armature",
+    "选择动作骨架和目标骨架": "Select a Source and Target Armature",
+    "原地动作": "In-Place",
+    "执行批量": "Retarget Batch",
+    "输入模式": "Source Mode",
+    "单个": "Single",
+    "重映射一个动作骨架": "Retarget one source armature",
+    "批量集合": "Batch Collection",
+    "重映射集合内全部动作骨架": "Retarget every valid source armature in the collection",
+    "批量集合可执行": "Batch Ready",
+    "批量结果": "Batch Results",
+    "最近批量编号": "Last Batch ID",
+    "源骨骼": "Source Bone",
+    "点击人形部位时写入源骨骼": "Assign the selected source bone when clicking a humanoid region",
+    "目标骨骼": "Target Bone",
+    "点击人形部位时写入目标骨骼": "Assign the selected target bone when clicking a humanoid region",
+    "颈段数": "Neck Segments",
+    "脊柱段数": "Spine Segments",
+    "显示手动槽位按钮": "Show Manual Slot Buttons",
+    "显示人工校正": "Show Manual Correction",
+    "人形图高度": "Humanoid Figure Height",
+    "显示映射状态": "Show Mapping Status",
+    "识别摘要": "Detection Summary",
+    "尚未自动识别。": "Auto Detect has not been run.",
+    "识别详情": "Detection Details",
+    "选择两套人形骨架后，点击自动识别。": "Select two humanoid armatures, then click Auto Detect.",
+    "动作骨架画像": "Source Rig Profile",
+    "目标骨架画像": "Target Rig Profile",
+    "可执行重映射": "Ready to Retarget",
+    "显示重映射设置": "Show Retarget Settings",
+    "源动作根位移已判断": "Source Root Motion Evaluated",
+    "源动作有根位移": "Source Has Root Motion",
+    "源动作根位移": "Source Root Motion",
+    "源动作根骨骼": "Source Motion Root Bone",
+    "自动判断静止姿态差异": "Evaluate Rest-Pose Difference Automatically",
+    "重映射状态": "Retarget Status",
+    "最近点击部位": "Last Selected Region",
+    "人形面板宽度": "Humanoid Panel Width",
+    "人形面板高度": "Humanoid Panel Height",
+    "中轴": "Center",
+    "左臂": "Left Arm",
+    "右臂": "Right Arm",
+    "左腿": "Left Leg",
+    "右腿": "Right Leg",
+    "头": "Head",
+    "髋": "Hips",
+    "左肩": "Left Shoulder",
+    "右肩": "Right Shoulder",
+    "左大臂": "Left Upper Arm",
+    "右大臂": "Right Upper Arm",
+    "左小臂": "Left Forearm",
+    "右小臂": "Right Forearm",
+    "左手": "Left Hand",
+    "右手": "Right Hand",
+    "左大腿": "Left Thigh",
+    "右大腿": "Right Thigh",
+    "左小腿": "Left Shin",
+    "右小腿": "Right Shin",
+    "左脚": "Left Foot",
+    "右脚": "Right Foot",
+    "左脚趾": "Left Toes",
+    "右脚趾": "Right Toes",
+    "左拇指": "Left Thumb",
+    "右拇指": "Right Thumb",
+    "左食指": "Left Index",
+    "右食指": "Right Index",
+    "左中指": "Left Middle",
+    "右中指": "Right Middle",
+    "左无名指": "Left Ring",
+    "右无名指": "Right Ring",
+    "左小指": "Left Pinky",
+    "右小指": "Right Pinky",
+    "左拇": "L Thumb",
+    "右拇": "R Thumb",
+    "左食": "L Index",
+    "右食": "R Index",
+    "左中": "L Middle",
+    "右中": "R Middle",
+    "左无": "L Ring",
+    "右无": "R Ring",
+    "左小": "L Pinky",
+    "右小": "R Pinky",
+    "颈": "Neck",
+    "胸/脊柱": "Chest/Spine",
+    "胸/脊": "Chest/Spine",
+    "胸": "Chest",
+    "脊柱": "Spine",
+    "脊": "Spine ",
+    "手": "Set",
+    "候": "Candidate",
+    "半": "Partial",
+    "动作": "Source",
+}
+
+CUSTOM_TRANSLATIONS = {
+    "Detect Rigs": "自动识别",
+    "Motion Remap": "重映射",
+    "Retarget Animation": "执行重映射",
+    "Run Retarget": "执行重映射",
+    "Target Bones": "目标骨骼",
+}
+
+OPERATOR_MESSAGES = (
+    "Assign to This Region",
+    "Auto Detect Humanoid Rigs",
+    "Clear Result",
+    "Detect Rigs",
+    "Humanoid Panel Interaction",
+    "Initialize Humanoid Slots",
+    "Open Humanoid Mapping Figure",
+    "Pick Armature",
+    "Retarget Animation",
+    "Retarget Batch",
+    "Run Retarget",
+)
+
+
+def convert_runtime_text(text):
+    for chinese, english in sorted(CN_TO_EN.items(), key=lambda item: len(item[0]), reverse=True):
+        text = text.replace(chinese, english)
+    return (
+        text.replace("：", ": ")
+        .replace("；", "; ")
+        .replace("。", ".")
+        .replace("，", ", ")
+        .replace("、", ", ")
+    )
+
+
+def build_translations():
+    zh_hans = {}
+    for chinese, english in CN_TO_EN.items():
+        if english and english not in zh_hans:
+            zh_hans[english] = chinese
+    zh_hans.update(CUSTOM_TRANSLATIONS)
+    lines = [
+        '"""Simplified Chinese translations for Humanoid Remap Studio."""',
+        "",
+        "ZH_HANS = {",
+    ]
+    for english in sorted(zh_hans):
+        lines.append(f'    ("*", {english!r}): {zh_hans[english]!r},')
+    lines.extend(
+        [
+            "}",
+            "",
+            "OPERATOR_MESSAGES = (",
+        ]
+    )
+    for message in OPERATOR_MESSAGES:
+        lines.append(f"    {message!r},")
+    lines.extend(
+        [
+            ")",
+            "",
+            "for message in OPERATOR_MESSAGES:",
+            '    translated = ZH_HANS.get(("*", message))',
+            "    if translated is not None:",
+            '        ZH_HANS[("Operator", message)] = translated',
+            "",
+            "TRANSLATIONS = {",
+            '    "zh_HANS": ZH_HANS,',
+            '    "zh_CN": ZH_HANS,',
+            "}",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def main():
+    converted = {}
+    for relative_path in RUNTIME_FILES:
+        path = ROOT / relative_path
+        text = convert_runtime_text(path.read_text(encoding="utf-8"))
+        remaining = sorted(set(re.findall(r"[\u4e00-\u9fff]+", text)))
+        if relative_path == "__init__.py":
+            remaining = [value for value in remaining if value != "帧给你你来"]
+        if remaining:
+            raise RuntimeError(f"{relative_path}: untranslated CJK: {remaining}")
+        converted[path] = text
+    for path, text in converted.items():
+        path.write_text(text, encoding="utf-8", newline="\n")
+    (ROOT / "translations.py").write_text(
+        build_translations(), encoding="utf-8", newline="\n"
+    )
+    print(f"Converted {len(converted)} runtime files and generated translations.py")
+
+
+if __name__ == "__main__":
+    main()

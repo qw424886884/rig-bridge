@@ -3,72 +3,72 @@ MAX_SPINE_COUNT = 6
 
 
 def _neck_role_defs():
-    return [(f"neck_{index:02d}", f"颈{index}") for index in range(MAX_NECK_COUNT, 0, -1)]
+    return [(f"neck_{index:02d}", f"Neck{index}") for index in range(MAX_NECK_COUNT, 0, -1)]
 
 
 def _spine_role_defs():
-    return [(f"spine_{index:02d}", f"脊柱{index}") for index in range(MAX_SPINE_COUNT, 0, -1)]
+    return [(f"spine_{index:02d}", f"Spine{index}") for index in range(MAX_SPINE_COUNT, 0, -1)]
 
 
 HUMAN_ROLE_GROUPS = [
     {
         "id": "center",
-        "label": "中轴",
+        "label": "Center",
         "roles": [
-            ("head", "头"),
+            ("head", "Head"),
             *_neck_role_defs(),
             *_spine_role_defs(),
-            ("hips", "髋"),
+            ("hips", "Hips"),
         ],
     },
     {
         "id": "left_arm",
-        "label": "左臂",
+        "label": "Left Arm",
         "roles": [
-            ("left_shoulder", "左肩"),
-            ("left_upper_arm", "左大臂"),
-            ("left_lower_arm", "左小臂"),
-            ("left_hand", "左手"),
-            ("left_thumb", "左拇指"),
-            ("left_index", "左食指"),
-            ("left_middle", "左中指"),
-            ("left_ring", "左无名指"),
-            ("left_pinky", "左小指"),
+            ("left_shoulder", "Left Shoulder"),
+            ("left_upper_arm", "Left Upper Arm"),
+            ("left_lower_arm", "Left Forearm"),
+            ("left_hand", "Left Hand"),
+            ("left_thumb", "Left Thumb"),
+            ("left_index", "Left Index"),
+            ("left_middle", "Left Middle"),
+            ("left_ring", "Left Ring"),
+            ("left_pinky", "Left Pinky"),
         ],
     },
     {
         "id": "right_arm",
-        "label": "右臂",
+        "label": "Right Arm",
         "roles": [
-            ("right_shoulder", "右肩"),
-            ("right_upper_arm", "右大臂"),
-            ("right_lower_arm", "右小臂"),
-            ("right_hand", "右手"),
-            ("right_thumb", "右拇指"),
-            ("right_index", "右食指"),
-            ("right_middle", "右中指"),
-            ("right_ring", "右无名指"),
-            ("right_pinky", "右小指"),
+            ("right_shoulder", "Right Shoulder"),
+            ("right_upper_arm", "Right Upper Arm"),
+            ("right_lower_arm", "Right Forearm"),
+            ("right_hand", "Right Hand"),
+            ("right_thumb", "Right Thumb"),
+            ("right_index", "Right Index"),
+            ("right_middle", "Right Middle"),
+            ("right_ring", "Right Ring"),
+            ("right_pinky", "Right Pinky"),
         ],
     },
     {
         "id": "left_leg",
-        "label": "左腿",
+        "label": "Left Leg",
         "roles": [
-            ("left_upper_leg", "左大腿"),
-            ("left_lower_leg", "左小腿"),
-            ("left_foot", "左脚"),
-            ("left_toe", "左脚趾"),
+            ("left_upper_leg", "Left Thigh"),
+            ("left_lower_leg", "Left Shin"),
+            ("left_foot", "Left Foot"),
+            ("left_toe", "Left Toes"),
         ],
     },
     {
         "id": "right_leg",
-        "label": "右腿",
+        "label": "Right Leg",
         "roles": [
-            ("right_upper_leg", "右大腿"),
-            ("right_lower_leg", "右小腿"),
-            ("right_foot", "右脚"),
-            ("right_toe", "右脚趾"),
+            ("right_upper_leg", "Right Thigh"),
+            ("right_lower_leg", "Right Shin"),
+            ("right_foot", "Right Foot"),
+            ("right_toe", "Right Toes"),
         ],
     },
 ]
