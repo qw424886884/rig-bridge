@@ -46,6 +46,12 @@ PRESET_SOURCE_REFERENCES = {
         "kind": "observed-sample",
         "note": "Auto-Rig Pro control, FK/IK, and reference naming observed in the working test scene.",
     },
+    "observed_mmd_fk_scene": {
+        "label": "Observed MMD FK scene",
+        "url": "",
+        "kind": "observed-sample",
+        "note": "MMD FK center, lower-body, torso, limb, toe, and finger naming verified in a production retarget scene.",
+    },
     "epic_animation_retargeting": {
         "label": "Epic Animation Retargeting",
         "url": "https://dev.epicgames.com/documentation/unreal-engine/animation-retargeting-in-unreal-engine",
@@ -91,7 +97,7 @@ def normalize_preset_name(name):
     text = text.replace("mixamorig:", "")
     text = re.sub(r"[\s\-:]+", "_", text)
     text = text.replace(".", "_")
-    text = re.sub(r"[^a-z0-9_\u4e00-\u9fff]+", "", text)
+    text = re.sub(r"[^a-z0-9_\u3040-\u30ff\u4e00-\u9fff\uff10-\uff19]+", "", text)
     text = re.sub(r"_+", "_", text).strip("_")
     return text
 
@@ -209,6 +215,52 @@ HUMANOID_PRESET_PROFILES = (
         family="rigging-addon",
         status="validated-seed",
         aliases=("ARP", "AutoRigPro"),
+    ),
+    profile(
+        "mmd_fk",
+        "MMD FK",
+        {
+            "hips": ("センター", "グルーブ"),
+            "pelvis": ("下半身",),
+            "spine_01": ("上半身",),
+            "spine_02": ("上半身1",),
+            "spine_03": ("上半身2",),
+            "neck_01": ("首",),
+            "head": ("頭",),
+            "left_shoulder": ("肩.L", "左肩"),
+            "right_shoulder": ("肩.R", "右肩"),
+            "left_upper_arm": ("腕.L", "左腕"),
+            "right_upper_arm": ("腕.R", "右腕"),
+            "left_lower_arm": ("ひじ.L", "左ひじ"),
+            "right_lower_arm": ("ひじ.R", "右ひじ"),
+            "left_hand": ("手首.L", "左手首"),
+            "right_hand": ("手首.R", "右手首"),
+            "left_upper_leg": ("足.L", "左足"),
+            "right_upper_leg": ("足.R", "右足"),
+            "left_lower_leg": ("ひざ.L", "左ひざ"),
+            "right_lower_leg": ("ひざ.R", "右ひざ"),
+            "left_foot": ("足首.L", "左足首"),
+            "right_foot": ("足首.R", "右足首"),
+            "left_toe": ("足先EX.L", "つま先.L", "左つま先"),
+            "right_toe": ("足先EX.R", "つま先.R", "右つま先"),
+            "left_thumb": ("親指０.L", "親指0.L"),
+            "right_thumb": ("親指０.R", "親指0.R"),
+            "left_index": ("人指１.L", "人指1.L"),
+            "right_index": ("人指１.R", "人指1.R"),
+            "left_middle": ("中指１.L", "中指1.L"),
+            "right_middle": ("中指１.R", "中指1.R"),
+            "left_ring": ("薬指１.L", "薬指1.L"),
+            "right_ring": ("薬指１.R", "薬指1.R"),
+            "left_pinky": ("小指１.L", "小指1.L"),
+            "right_pinky": ("小指１.R", "小指1.R"),
+        },
+        raw_markers=("センター", "下半身", "ひざ."),
+        object_markers=("mmd", "miku", "mikumikudance"),
+        description="MikuMikuDance FK skeleton with separate motion-center and lower-body pelvis bones.",
+        sources=("observed_mmd_fk_scene",),
+        family="animation-format",
+        status="validated-production-sample",
+        aliases=("MMD", "MikuMikuDance"),
     ),
     profile(
         "unreal",
@@ -483,6 +535,12 @@ HUMANOID_PRESET_SAMPLE_SETS = (
         "auto_rig_pro",
         object_name="Human_rig",
         source="observed_auto_rig_pro_scene",
+    ),
+    _sample_from_profile(
+        "mmd_fk_production_core",
+        "mmd_fk",
+        object_name="MMD_Action_Source",
+        source="observed_mmd_fk_scene",
     ),
     _sample_from_profile(
         "unreal_mannequin_core",

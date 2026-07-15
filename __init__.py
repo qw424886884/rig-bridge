@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Humanoid Remap Studio",
     "author": "帧给你你来K",
-    "version": (0, 1, 59),
+    "version": (0, 1, 60),
     "blender": (5, 1, 0),
     "location": "View3D > Sidebar > 重映射 > 人形重映射",
     "description": "Automatic humanoid action retargeting with topology fallback.",
@@ -375,6 +375,8 @@ def core_topology_coverage(armature, min_score=HRS_STRUCTURAL_CORE_MIN_SCORE):
             "missing": list(CORE_REMAP_ROLE_IDS),
             "minScore": 0.0,
             "matches": {},
+            "chainErrors": [],
+            "duplicateBones": {},
         }
     topology_matches = analyze_humanoid_roles(armature)
     usable = {}
@@ -387,13 +389,58 @@ def core_topology_coverage(armature, min_score=HRS_STRUCTURAL_CORE_MIN_SCORE):
             continue
         usable[role_id] = match
         scores.append(float(match.get("score", 0.0)))
+
+    by_bone = {}
+    for role_id, match in usable.items():
+        by_bone.setdefault(match["bone_name"], []).append(role_id)
+    duplicate_bones = {
+        bone_name: role_ids
+        for bone_name, role_ids in by_bone.items()
+        if len(role_ids) > 1
+    }
+
+    def descends_from(child_role, parent_role):
+        child_match = usable.get(child_role)
+        parent_match = usable.get(parent_role)
+        if not child_match or not parent_match:
+            return True
+        child = armature.data.bones.get(child_match["bone_name"])
+        parent_name = parent_match["bone_name"]
+        current = child.parent if child else None
+        while current:
+            if current.name == parent_name:
+                return True
+            current = current.parent
+        return False
+
+    expected_chains = (
+        ("spine_01", "hips"),
+        ("head", "spine_01"),
+        ("left_lower_arm", "left_upper_arm"),
+        ("left_hand", "left_lower_arm"),
+        ("right_lower_arm", "right_upper_arm"),
+        ("right_hand", "right_lower_arm"),
+        ("left_upper_leg", "hips"),
+        ("left_lower_leg", "left_upper_leg"),
+        ("left_foot", "left_lower_leg"),
+        ("right_upper_leg", "hips"),
+        ("right_lower_leg", "right_upper_leg"),
+        ("right_foot", "right_lower_leg"),
+    )
+    chain_errors = [
+        f"{child_role}!<{parent_role}"
+        for child_role, parent_role in expected_chains
+        if not descends_from(child_role, parent_role)
+    ]
     return {
-        "ready": len(missing) == 0,
+        "ready": len(missing) == 0 and not chain_errors and not duplicate_bones,
         "found": len(usable),
         "total": len(CORE_REMAP_ROLE_IDS),
         "missing": missing,
         "minScore": min(scores) if scores else 0.0,
         "matches": usable,
+        "chainErrors": chain_errors,
+        "duplicateBones": duplicate_bones,
     }
 
 
@@ -507,13 +554,21 @@ def merged_role_matches_for_armature(armature, roles, prefer_preset=True):
     name_matches = semantic_name_role_matches(armature, roles)
     topology_matches = analyze_humanoid_roles(armature)
     merged = {}
+    topology_ready = core_topology_coverage(armature)["ready"]
     for role_id in roles:
-        candidates = (
-            (preset_matches.get(role_id), "preset"),
-            (name_matches.get(role_id), "name"),
-            (topology_matches.get(role_id), "topology"),
-        )
-        if not prefer_preset:
+        if prefer_preset:
+            candidates = (
+                (preset_matches.get(role_id), "preset"),
+                (name_matches.get(role_id), "name"),
+                (topology_matches.get(role_id), "topology"),
+            )
+        elif topology_ready:
+            candidates = (
+                (topology_matches.get(role_id), "topology"),
+                (name_matches.get(role_id), "name"),
+                (preset_matches.get(role_id), "preset"),
+            )
+        else:
             candidates = (
                 (name_matches.get(role_id), "name"),
                 (topology_matches.get(role_id), "topology"),
@@ -892,7 +947,30 @@ def source_role_map_for_auto_rig(scene):
         for role_id in role_ids_for_bone:
             if role_id != keep_role:
                 role_map.pop(role_id, None)
+
+    source_action = animation_action_for_armature(source) if source else None
+    for role_id in ("left_toe", "right_toe"):
+        bone_name = role_map.get(role_id, "")
+        if bone_name and not action_bone_has_rotation_delta(source_action, bone_name):
+            role_map.pop(role_id, None)
     return role_map
+
+
+def action_bone_has_rotation_delta(action, bone_name, tolerance=1.0e-4):
+    if not action or not bone_name:
+        return False
+    path_prefix = escaped_pose_bone_data_path(bone_name, "")
+    for curve in action_fcurves(action):
+        if not curve.data_path.startswith(path_prefix):
+            continue
+        suffix = curve.data_path[len(path_prefix):]
+        if suffix not in {"rotation_quaternion", "rotation_euler", "rotation_axis_angle"}:
+            continue
+        neutral = 1.0 if suffix == "rotation_quaternion" and curve.array_index == 0 else 0.0
+        for point in curve.keyframe_points:
+            if abs(float(point.co[1]) - neutral) > tolerance:
+                return True
+    return False
 
 
 def target_role_map_for_auto_rig(scene):
@@ -912,6 +990,45 @@ def target_role_map_for_auto_rig(scene):
                 role_map[role_id] = candidate
                 break
     return role_map
+
+
+def nearest_common_bone_ancestor(first_bone, second_bone):
+    if not first_bone or not second_bone:
+        return None
+    first_ancestors = set()
+    current = first_bone
+    while current:
+        first_ancestors.add(current.name)
+        current = current.parent
+    current = second_bone
+    while current:
+        if current.name in first_ancestors:
+            return current
+        current = current.parent
+    return None
+
+
+def source_pelvis_bone_name(scene, role_map):
+    source = scene.hrs_source_armature
+    if not source or not source.pose:
+        return ""
+
+    preset_match = preset_role_matches(source, {"pelvis"}).get("pelvis")
+    if preset_match and armature_has_bone(source, preset_match.get("bone_name", "")):
+        return preset_match["bone_name"]
+
+    left_leg = source.pose.bones.get(role_map.get("left_upper_leg", ""))
+    right_leg = source.pose.bones.get(role_map.get("right_upper_leg", ""))
+    common = nearest_common_bone_ancestor(left_leg, right_leg)
+    motion_root = source.pose.bones.get(role_map.get("hips", ""))
+    if not common or not motion_root or common == motion_root:
+        return ""
+    current = common.parent
+    while current:
+        if current == motion_root:
+            return common.name
+        current = current.parent
+    return ""
 
 
 def mapping_armature_for_attr(scene, attr_name):
@@ -1026,6 +1143,27 @@ def is_auto_rig_pro_mixamo_pair(scene):
         or slot_coverage["ready"]
     )
     return target_is_auto_rig and source_ready
+
+
+def auto_rig_pro_runtime_available(scene):
+    required_scene_properties = (
+        "source_rig",
+        "target_rig",
+        "arp_retarget_in_place",
+    )
+    required_operators = (
+        "build_bones_list",
+        "retarget",
+    )
+    return bool(
+        all(hasattr(scene, name) for name in required_scene_properties)
+        and hasattr(bpy.ops, "arp")
+        and all(hasattr(bpy.ops.arp, name) for name in required_operators)
+    )
+
+
+def should_use_auto_rig_pro_native(scene):
+    return is_auto_rig_pro_mixamo_pair(scene) and auto_rig_pro_runtime_available(scene)
 
 
 def mapping_coverage(scene, ensure=True):
@@ -1178,7 +1316,7 @@ def update_auto_summary(scene, assigned=0):
     target_preset = armature_preset_profile(scene.hrs_target_armature)
     coverage = mapping_coverage(scene)
     motion_summary = update_source_motion_state(scene)
-    arp_native_ready = is_auto_rig_pro_mixamo_pair(scene)
+    arp_native_ready = should_use_auto_rig_pro_native(scene)
     preset_route_ready = bool(source_preset and target_preset)
     posture_gate = retarget_posture_gate(scene)
     scene.hrs_source_profile = source_profile
@@ -2783,6 +2921,160 @@ def rotation_only_delta(source_delta, include_location, location_scale):
     return delta
 
 
+def anatomical_primary_role_pairs(role_bones):
+    pairs = {
+        "left_upper_arm": ("left_upper_arm", "left_lower_arm"),
+        "left_lower_arm": ("left_lower_arm", "left_hand"),
+        "left_hand": ("left_lower_arm", "left_hand"),
+        "right_upper_arm": ("right_upper_arm", "right_lower_arm"),
+        "right_lower_arm": ("right_lower_arm", "right_hand"),
+        "right_hand": ("right_lower_arm", "right_hand"),
+        "left_upper_leg": ("left_upper_leg", "left_lower_leg"),
+        "left_lower_leg": ("left_lower_leg", "left_foot"),
+        "left_foot": (
+            ("left_foot", "left_toe")
+            if "left_toe" in role_bones
+            else ("left_lower_leg", "left_foot")
+        ),
+        "right_upper_leg": ("right_upper_leg", "right_lower_leg"),
+        "right_lower_leg": ("right_lower_leg", "right_foot"),
+        "right_foot": (
+            ("right_foot", "right_toe")
+            if "right_toe" in role_bones
+            else ("right_lower_leg", "right_foot")
+        ),
+    }
+    if "left_toe" in role_bones:
+        pairs["left_toe"] = ("left_foot", "left_toe")
+    if "right_toe" in role_bones:
+        pairs["right_toe"] = ("right_foot", "right_toe")
+    if "left_shoulder" in role_bones:
+        pairs["left_shoulder"] = ("left_shoulder", "left_upper_arm")
+    if "right_shoulder" in role_bones:
+        pairs["right_shoulder"] = ("right_shoulder", "right_upper_arm")
+
+    spines = sorted(
+        (role_id for role_id in role_bones if role_id.startswith("spine_")),
+        key=lambda role_id: int(role_id.rsplit("_", 1)[-1]),
+    )
+    necks = sorted(
+        (role_id for role_id in role_bones if role_id.startswith("neck_")),
+        key=lambda role_id: int(role_id.rsplit("_", 1)[-1]),
+    )
+    torso_chain = [*spines, *necks, "head"]
+    if torso_chain and "hips" in role_bones and torso_chain[0] in role_bones:
+        pairs["hips"] = ("hips", torso_chain[0])
+    for index, role_id in enumerate(torso_chain[:-1]):
+        next_role = torso_chain[index + 1]
+        if role_id in role_bones and next_role in role_bones:
+            pairs[role_id] = (role_id, next_role)
+    if "head" in role_bones:
+        previous = next(
+            (role_id for role_id in reversed(torso_chain[:-1]) if role_id in role_bones),
+            None,
+        )
+        if previous:
+            pairs["head"] = (previous, "head")
+    return pairs
+
+
+def anatomical_frame_data_for_pairs(armature, pairs, pair_side):
+    role_bones = {}
+    for pair in pairs:
+        bone = pair.get(pair_side)
+        role_id = pair.get("role_id", "")
+        if role_id and bone and role_id not in role_bones:
+            role_bones[role_id] = bone
+    required = {
+        "hips",
+        "spine_01",
+        "head",
+        "left_upper_leg",
+        "right_upper_leg",
+    }
+    if not required.issubset(role_bones):
+        return {"ready": False, "frames": {}, "global": None}
+
+    points = {
+        role_id: bone.bone.head_local.copy()
+        for role_id, bone in role_bones.items()
+    }
+    up = points["head"] - points["hips"]
+    lateral = points["left_upper_leg"] - points["right_upper_leg"]
+    if up.length <= 1.0e-8 or lateral.length <= 1.0e-8:
+        return {"ready": False, "frames": {}, "global": None}
+    up.normalize()
+    lateral = lateral - up * lateral.dot(up)
+    if lateral.length <= 1.0e-8:
+        return {"ready": False, "frames": {}, "global": None}
+    lateral.normalize()
+    forward = lateral.cross(up)
+    if forward.length <= 1.0e-8:
+        return {"ready": False, "frames": {}, "global": None}
+    forward.normalize()
+
+    frames = {}
+    for role_id, (start_role, end_role) in anatomical_primary_role_pairs(role_bones).items():
+        if start_role not in points or end_role not in points:
+            continue
+        y_axis = points[end_role] - points[start_role]
+        if y_axis.length <= 1.0e-8:
+            continue
+        y_axis.normalize()
+        z_axis = forward - y_axis * forward.dot(y_axis)
+        if z_axis.length <= 1.0e-8:
+            z_axis = lateral - y_axis * lateral.dot(y_axis)
+        if z_axis.length <= 1.0e-8:
+            continue
+        z_axis.normalize()
+        x_axis = y_axis.cross(z_axis)
+        if x_axis.length <= 1.0e-8:
+            continue
+        x_axis.normalize()
+        z_axis = x_axis.cross(y_axis)
+        z_axis.normalize()
+        frames[role_id] = Matrix((x_axis, y_axis, z_axis)).transposed()
+
+    missing_core = [role_id for role_id in CORE_REMAP_ROLE_IDS if role_id not in frames]
+    return {
+        "ready": not missing_core,
+        "frames": frames,
+        "global": Matrix((lateral, up, forward)).transposed(),
+        "missingCore": missing_core,
+    }
+
+
+def anatomical_transfer_context(source, target, pairs):
+    source_data = anatomical_frame_data_for_pairs(source, pairs, "source")
+    target_data = anatomical_frame_data_for_pairs(target, pairs, "target")
+    if not source_data.get("ready") or not target_data.get("ready"):
+        return {"ready": False, "source": source_data, "target": target_data}
+    return {
+        "ready": True,
+        "source": source_data,
+        "target": target_data,
+        "globalAlignment": target_data["global"] @ source_data["global"].inverted_safe(),
+    }
+
+
+def anatomical_target_rotation(pair, context):
+    source_frame = context["source"]["frames"].get(pair["role_id"])
+    target_frame = context["target"]["frames"].get(pair["role_id"])
+    if source_frame is None or target_frame is None:
+        return None
+    source_rest_rotation = pair["source"].bone.matrix_local.to_3x3().normalized()
+    target_rest_rotation = pair["target"].bone.matrix_local.to_3x3().normalized()
+    source_calibration = source_rest_rotation.inverted_safe() @ source_frame
+    target_calibration = target_rest_rotation.inverted_safe() @ target_frame
+    source_pose_rotation = pair["source"].matrix.to_3x3().normalized()
+    source_pose_frame = source_pose_rotation @ source_calibration
+    return (
+        context["globalAlignment"]
+        @ source_pose_frame
+        @ target_calibration.inverted_safe()
+    )
+
+
 def keyframe_pose_bone(pose_bone, frame, include_location):
     keyed = 0
     if include_location:
@@ -3106,9 +3398,19 @@ def bake_retarget_action(scene):
     keep_in_place = bool(scene.hrs_retarget_keep_in_place)
     first_root_translations = {}
     keyed_channels = 0
+    topology_fallback = not armature_preset_profile(source) or not armature_preset_profile(target)
+    anatomy_context = (
+        anatomical_transfer_context(source, target, pairs)
+        if rest_delta_enabled and topology_fallback
+        else {"ready": False}
+    )
+    use_anatomical_transfer = bool(anatomy_context.get("ready"))
+    target_pairs = {pair["target"].name: pair for pair in pairs}
+    target_bones = sorted(target.pose.bones, key=pose_bone_depth)
     target_action["hrs_retarget_variant"] = retarget_variant_key(keep_in_place)
     target_action["hrs_source_uid"] = ensure_hrs_object_uid(source)
     target_action["hrs_target_uid"] = ensure_hrs_object_uid(target)
+    target_action["hrs_anatomical_transfer"] = use_anatomical_transfer
 
     try:
         source.animation_data_create()
@@ -3117,31 +3419,106 @@ def bake_retarget_action(scene):
             scene.frame_set(frame)
             bpy.context.view_layer.update()
 
-            for pair in pairs:
-                pair["target"].matrix_basis = Matrix.Identity(4)
+            reset_bones = target_bones if use_anatomical_transfer else [pair["target"] for pair in pairs]
+            for pose_bone in reset_bones:
+                pose_bone.matrix_basis = Matrix.Identity(4)
             bpy.context.view_layer.update()
 
-            for pair in pairs:
-                source_local = pose_local_matrix(pair["source"])
-                if rest_delta_enabled:
-                    source_delta = pair["source_rest"].inverted_safe() @ source_local
-                else:
-                    source_delta = source_local
-                include_location = pair["role_id"] in root_role_ids
-                target_delta = rotation_only_delta(source_delta, include_location, location_scale)
-                target_local = pair["target_rest"] @ target_delta
+            if use_anatomical_transfer:
+                desired_matrices = {}
+                for target_bone in target_bones:
+                    parent_matrix = (
+                        desired_matrices[target_bone.parent.name]
+                        if target_bone.parent
+                        else None
+                    )
+                    rest_local = rest_local_matrix(target_bone)
+                    desired_matrix = (
+                        parent_matrix @ rest_local
+                        if parent_matrix is not None
+                        else rest_local.copy()
+                    )
+                    pair = target_pairs.get(target_bone.name)
+                    if pair:
+                        source_local = pose_local_matrix(pair["source"])
+                        source_delta = pair["source_rest"].inverted_safe() @ source_local
+                        include_location = pair["role_id"] in root_role_ids
+                        target_delta = rotation_only_delta(
+                            source_delta,
+                            include_location,
+                            location_scale,
+                        )
+                        target_local = pair["target_rest"] @ target_delta
 
-                if include_location and keep_in_place:
-                    translation = target_local.to_translation()
-                    if frame_index == 0:
-                        first_root_translations[pair["role_id"]] = translation.copy()
-                    origin = first_root_translations[pair["role_id"]]
-                    for axis in range(3):
-                        if axis != target_vertical_axis:
-                            translation[axis] = origin[axis]
-                    target_local.translation = translation
+                        target_rotation = anatomical_target_rotation(pair, anatomy_context)
+                        if target_rotation is not None:
+                            translation = desired_matrix.to_translation()
+                            if include_location:
+                                source_motion = (
+                                    pair["source"].head
+                                    - pair["source"].bone.head_local
+                                )
+                                translation = (
+                                    pair["target"].bone.head_local
+                                    + anatomy_context["globalAlignment"]
+                                    @ source_motion
+                                    * location_scale
+                                )
+                                if keep_in_place:
+                                    if frame_index == 0:
+                                        first_root_translations[pair["role_id"]] = translation.copy()
+                                    origin = first_root_translations[pair["role_id"]]
+                                    for axis in range(3):
+                                        if axis != target_vertical_axis:
+                                            translation[axis] = origin[axis]
+                            desired_matrix = target_rotation.to_4x4()
+                            desired_matrix.translation = translation
+                        else:
+                            if include_location and keep_in_place:
+                                translation = target_local.to_translation()
+                                if frame_index == 0:
+                                    first_root_translations[pair["role_id"]] = translation.copy()
+                                origin = first_root_translations[pair["role_id"]]
+                                for axis in range(3):
+                                    if axis != target_vertical_axis:
+                                        translation[axis] = origin[axis]
+                                target_local.translation = translation
+                            desired_matrix = (
+                                parent_matrix @ target_local
+                                if parent_matrix is not None
+                                else target_local
+                            )
+                    desired_matrices[target_bone.name] = desired_matrix
+                    if not pair:
+                        continue
+                    local_pose = (
+                        parent_matrix.inverted_safe() @ desired_matrix
+                        if parent_matrix is not None
+                        else desired_matrix
+                    )
+                    target_bone.matrix_basis = rest_local.inverted_safe() @ local_pose
+            else:
+                for pair in pairs:
+                    source_local = pose_local_matrix(pair["source"])
+                    if rest_delta_enabled:
+                        source_delta = pair["source_rest"].inverted_safe() @ source_local
+                    else:
+                        source_delta = source_local
+                    include_location = pair["role_id"] in root_role_ids
+                    target_delta = rotation_only_delta(source_delta, include_location, location_scale)
+                    target_local = pair["target_rest"] @ target_delta
 
-                set_pose_local_matrix(pair["target"], target_local)
+                    if include_location and keep_in_place:
+                        translation = target_local.to_translation()
+                        if frame_index == 0:
+                            first_root_translations[pair["role_id"]] = translation.copy()
+                        origin = first_root_translations[pair["role_id"]]
+                        for axis in range(3):
+                            if axis != target_vertical_axis:
+                                translation[axis] = origin[axis]
+                        target_local.translation = translation
+
+                    set_pose_local_matrix(pair["target"], target_local)
 
             bpy.context.view_layer.update()
 
@@ -3175,6 +3552,7 @@ def bake_retarget_action(scene):
         "corePairs": core_count,
         "fcurves": action_fcurve_count(target_action),
         "keyedChannels": keyed_channels,
+        "anatomicalTransfer": use_anatomical_transfer,
         "originalFrame": original_frame,
     }
 
@@ -3306,6 +3684,23 @@ def rebuild_auto_rig_map_from_roles(scene):
         if hasattr(item, "set_as_root"):
             item.set_as_root = role_id == "hips"
         assigned += 1
+    source_pelvis = source_pelvis_bone_name(scene, source_map)
+    target_pelvis = "c_root.x" if armature_has_bone(scene.hrs_target_armature, "c_root.x") else ""
+    if source_pelvis and target_pelvis and source_pelvis != source_map.get("hips"):
+        item = scene.bones_map_v2.add()
+        item.name = target_pelvis
+        item.source_bone = source_pelvis
+        if hasattr(item, "ik"):
+            item.ik = False
+        if hasattr(item, "ik_world"):
+            item.ik_world = False
+        if hasattr(item, "ik_create_constraints"):
+            item.ik_create_constraints = False
+        if hasattr(item, "location"):
+            item.location = False
+        if hasattr(item, "set_as_root"):
+            item.set_as_root = False
+        assigned += 1
     missing_core = [role_id for role_id in CORE_REMAP_ROLE_IDS if role_id not in source_map]
     missing_target_core = [role_id for role_id in CORE_REMAP_ROLE_IDS if role_id not in target_map]
     return {
@@ -3323,13 +3718,30 @@ def force_auto_rig_fk_mapping(scene):
         return mapped_items
     if hasattr(scene, "arp_remap_allow_root_update"):
         scene.arp_remap_allow_root_update = False
+    root_item = next(
+        (item for item in scene.bones_map_v2 if item.name == "c_root_master.x"),
+        None,
+    )
+    if root_item is None:
+        root_item = next(
+            (
+                item
+                for item in scene.bones_map_v2
+                if item.source_bone == "Hips" or item.source_bone.endswith(":Hips")
+            ),
+            None,
+        )
+    if root_item is None:
+        root_item = next(
+            (item for item in scene.bones_map_v2 if auto_rig_role_for_target_name(item.name) == "hips"),
+            None,
+        )
     for item in scene.bones_map_v2:
         item.set_as_root = False
         item.ik = False
         item.ik_world = False
         item.ik_create_constraints = False
-        role_id = auto_rig_role_for_target_name(item.name)
-        if role_id == "hips" or item.source_bone == "Hips" or item.source_bone.endswith(":Hips"):
+        if item == root_item:
             item.set_as_root = True
             item.location = False
     if hasattr(scene, "arp_remap_allow_root_update"):
@@ -4356,7 +4768,7 @@ def execute_batch_retarget(scene):
             auto_guess_pair(scene, overwrite_manual=True)
             coverage = mapping_coverage(scene)
             posture_gate = retarget_posture_gate(scene)
-            use_arp_native = is_auto_rig_pro_mixamo_pair(scene)
+            use_arp_native = should_use_auto_rig_pro_native(scene)
             if not posture_gate["passed"]:
                 raise RuntimeError(f"{source.name}：{posture_gate['detail']}")
             if not coverage["ready"] and not use_arp_native:
@@ -4466,7 +4878,7 @@ class HRS_OT_execute_retarget(Operator):
             scene.hrs_retarget_status = posture_gate["detail"]
             self.report({"ERROR"}, scene.hrs_retarget_status)
             return {"CANCELLED"}
-        use_arp_native = is_auto_rig_pro_mixamo_pair(scene)
+        use_arp_native = should_use_auto_rig_pro_native(scene)
         if not coverage["ready"] and not use_arp_native:
             scene.hrs_retarget_status = "暂未命中稳定自动流程，请确认两套都是人形骨架。"
             self.report({"ERROR"}, scene.hrs_retarget_status)
@@ -4785,8 +5197,20 @@ def apply_auto_match(scene, slot, attr_name, match, overwrite_manual):
     return True
 
 
+def reset_auto_matches(scene, overwrite_manual=False):
+    for slot in scene.hrs_mapping_slots:
+        if slot.status == "manual" and not overwrite_manual:
+            continue
+        slot.source_bone = ""
+        slot.target_bone = ""
+        slot.status = "empty"
+        slot.confidence = 0.0
+        slot.note = ""
+
+
 def auto_guess_pair(scene, overwrite_manual=False):
     ensure_slots(scene)
+    reset_auto_matches(scene, overwrite_manual=overwrite_manual)
     assigned = 0
     recognition_batches = []
     detected_neck_count = int(scene.hrs_neck_count)
@@ -4801,7 +5225,12 @@ def auto_guess_pair(scene, overwrite_manual=False):
         preset_matches = preset_role_matches(armature, all_roles)
         name_matches = semantic_name_role_matches(armature, all_roles)
         topology_matches = analyze_humanoid_roles(armature)
-        recognition_batches.append((armature, attr_name, preset_matches, name_matches, topology_matches))
+        merged_matches = merged_role_matches_for_armature(
+            armature,
+            all_roles,
+            prefer_preset=bool(armature_preset_profile(armature)),
+        )
+        recognition_batches.append((armature, attr_name, preset_matches, name_matches, topology_matches, merged_matches))
         for role_id, match in {**topology_matches, **name_matches, **preset_matches}.items():
             if match["score"] < 0.42:
                 continue
@@ -4814,16 +5243,15 @@ def auto_guess_pair(scene, overwrite_manual=False):
     visible_roles = set(
         visible_role_ids(scene.hrs_neck_count, scene.hrs_spine_count, scene.hrs_show_fingers)
     )
-    for armature, attr_name, preset_matches, name_matches, topology_matches in recognition_batches:
-        for matches in (topology_matches, name_matches, preset_matches):
-            for role_id, match in matches.items():
-                if role_id not in visible_roles or match["score"] < 0.42:
-                    continue
-                slot = slot_for_role(scene, role_id)
-                if slot is None:
-                    continue
-                if apply_auto_match(scene, slot, attr_name, match, overwrite_manual):
-                    assigned += 1
+    for _armature, attr_name, _preset_matches, _name_matches, _topology_matches, merged_matches in recognition_batches:
+        for role_id, match in merged_matches.items():
+            if role_id not in visible_roles or match["score"] < 0.42:
+                continue
+            slot = slot_for_role(scene, role_id)
+            if slot is None:
+                continue
+            if apply_auto_match(scene, slot, attr_name, match, overwrite_manual):
+                assigned += 1
     update_auto_summary(scene, assigned=assigned)
     return assigned
 

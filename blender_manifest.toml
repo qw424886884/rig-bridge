@@ -1,6 +1,6 @@
 schema_version = "1.0.0"
 id = "humanoid_remap_studio"
-version = "0.1.59"
+version = "0.1.60"
 name = "Humanoid Remap Studio"
 tagline = "Automatic humanoid retargeting with topology fallback"
 maintainer = "帧给你你来K"

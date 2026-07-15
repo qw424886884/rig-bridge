@@ -7,7 +7,8 @@ Humanoid Remap Studio is a Blender add-on for automatic humanoid action retarget
 ## Features
 
 - Automatic source and target humanoid recognition
-- Preset-first matching with topology fallback
+- Preset-first matching with name-free structural fallback
+- Anonymous-rig recognition for bilateral limbs, torso terminals, toes, and complete finger chains
 - Single-action and collection batch retargeting
 - Root-motion or in-place output
 - Rest-pose and body-forward validation
@@ -24,7 +25,7 @@ Humanoid Remap Studio is a Blender add-on for automatic humanoid action retarget
 
 ### Blender Extensions
 
-After approval on the Blender Extensions platform, install it from Blender Preferences > Get Extensions by searching for `Humanoid Remap Studio`.
+The submitted version is available from the [Blender Extensions review page](https://extensions.blender.org/approval-queue/humanoid-remap-studio/). Until catalog review is complete, download the ZIP there and use Install from Disk. Catalog search in Blender becomes available after approval.
 
 ### Install from Disk
 
@@ -43,6 +44,8 @@ After approval on the Blender Extensions platform, install it from Blender Prefe
 6. Run Retarget or Batch Retarget.
 
 Generated actions can be removed with Clear Results before running another test.
+
+![Four-step retarget workflow](media/humanoid-remap-studio-workflow.png)
 
 ## Privacy and Permissions
 

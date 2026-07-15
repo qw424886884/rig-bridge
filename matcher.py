@@ -44,7 +44,7 @@ def normalize_name(name):
     text = text.replace("mixamorig:", "")
     text = re.sub(r"[\s\-:]+", "_", text)
     text = text.replace(".", "_")
-    text = re.sub(r"[^a-z0-9_\u4e00-\u9fff]+", "", text)
+    text = re.sub(r"[^a-z0-9_\u3040-\u30ff\u4e00-\u9fff\uff10-\uff19]+", "", text)
     text = re.sub(r"_+", "_", text).strip("_")
     return text
 
