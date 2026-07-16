@@ -1,5 +1,5 @@
 ---
-owner: Humanoid Remap Studio project
+owner: Rig Bridge project
 scope: Public repository media
 status: maintained
 canonicalRef: media

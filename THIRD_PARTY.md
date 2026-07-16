@@ -1,12 +1,12 @@
 # Third-Party Compatibility
 
-Humanoid Remap Studio contains only its own Python source in the public extension package.
+Rig Bridge contains only its own Python source in the public extension package.
 
 ## Auto-Rig Pro
 
-Auto-Rig Pro is an optional third-party Blender add-on and is not bundled, redistributed, or licensed by this project. When Auto-Rig Pro is already installed, Humanoid Remap Studio may call compatible runtime operators and properties to perform an optimized FK bake.
+Auto-Rig Pro is an optional third-party Blender add-on and is not bundled, redistributed, or licensed by this project. When Auto-Rig Pro is already installed, Rig Bridge may call compatible runtime operators and properties to perform an optimized FK bake.
 
-Auto-Rig Pro remains the property of its respective developer. Humanoid Remap Studio is not affiliated with or endorsed by Auto-Rig Pro.
+Auto-Rig Pro remains the property of its respective developer. Rig Bridge is not affiliated with or endorsed by Auto-Rig Pro.
 
 ## Rig and Motion Names
 

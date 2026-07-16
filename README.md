@@ -1,8 +1,8 @@
-# Humanoid Remap Studio
+# Rig Bridge
 
 [简体中文](README_zh_CN.md)
 
-Humanoid Remap Studio is a Blender add-on for automatic humanoid action retargeting. It recognizes known rig conventions first, then falls back to semantic names, hierarchy, body geometry, rest-pose checks, left/right structure, and forward-axis analysis.
+Rig Bridge is a Blender add-on that automatically moves animation between humanoid rigs. It recognizes known rig conventions first, then falls back to semantic names, hierarchy, body geometry, rest-pose checks, left/right structure, and forward-axis analysis.
 
 ## Features
 
@@ -57,7 +57,7 @@ The runtime is split into focused modules for action handling, rig recognition, 
 
 ## Compatibility
 
-The generic retargeting path works without third-party add-ons. If Auto-Rig Pro is installed and a compatible target is detected, Humanoid Remap Studio can use its runtime operators for an optimized FK bake. No Auto-Rig Pro files or source code are included.
+The generic retargeting path works without third-party add-ons. If Auto-Rig Pro is installed and a compatible target is detected, Rig Bridge can use its runtime operators for an optimized FK bake. No Auto-Rig Pro files or source code are included.
 
 ## Known Limits
 
@@ -74,4 +74,4 @@ Bilibili is the only social profile published by this project.
 
 ## License
 
-Humanoid Remap Studio is licensed under the GNU General Public License v3.0 or later. See [LICENSE](LICENSE).
+Rig Bridge is licensed under the GNU General Public License v3.0 or later. See [LICENSE](LICENSE).

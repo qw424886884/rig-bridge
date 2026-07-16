@@ -1,10 +1,10 @@
 bl_info = {
-    "name": "Humanoid Remap Studio",
+    "name": "Rig Bridge",
     "author": "帧给你你来K",
-    "version": (0, 1, 61),
+    "version": (0, 1, 62),
     "blender": (5, 1, 0),
     "location": "View3D > Sidebar > Motion Remap > Humanoid Retarget",
-    "description": "Automatic humanoid action retargeting with topology fallback.",
+    "description": "Move animation between humanoid rigs automatically.",
     "category": "Animation",
 }
 

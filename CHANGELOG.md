@@ -1,8 +1,16 @@
 # Changelog
 
-All notable changes to Humanoid Remap Studio are documented here.
+All notable changes to Rig Bridge are documented here.
 
 ## [Unreleased]
+
+## [0.1.62] - 2026-07-16
+
+### Changed
+
+- Renamed the user-facing product from Humanoid Remap Studio to Rig Bridge
+- Added the Chinese product name 动作搬运工 and a clearer plain-language tagline
+- Kept the extension ID, package name, repository URL, schema IDs, and generated-action provenance marker stable for compatibility
 
 ## [0.1.61] - 2026-07-15
 

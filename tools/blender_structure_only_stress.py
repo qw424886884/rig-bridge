@@ -1,6 +1,6 @@
 """Blender-side regression test for name-free humanoid structure recognition.
 
-Run this file through Blender MCP while Humanoid Remap Studio is enabled and a
+Run this file through Blender MCP while Rig Bridge is enabled and a
 known animated humanoid source is selected. The test clones that source twice,
 scrambles every bone name independently, runs the public retarget operator, and
 removes every temporary data-block before returning a JSON report.

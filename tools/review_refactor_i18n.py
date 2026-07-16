@@ -291,7 +291,7 @@ def build_translations():
             zh_hans[english] = chinese
     zh_hans.update(CUSTOM_TRANSLATIONS)
     lines = [
-        '"""Simplified Chinese translations for Humanoid Remap Studio."""',
+        '"""Simplified Chinese translations for Rig Bridge."""',
         "",
         "ZH_HANS = {",
     ]

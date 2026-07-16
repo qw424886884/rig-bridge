@@ -4,7 +4,7 @@ Issues and pull requests are welcome after the first public release.
 
 ## Before Opening an Issue
 
-- Use the latest published version of Blender and Humanoid Remap Studio.
+- Use the latest published version of Blender and Rig Bridge.
 - Confirm that both armatures are humanoid and that the source has an active Action.
 - Remove private character data and customer names from screenshots and sample files.
 - Describe the source rig family, target rig family, rest pose, Blender version, and whether root motion is expected.

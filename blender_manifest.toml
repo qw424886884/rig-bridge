@@ -1,8 +1,8 @@
 schema_version = "1.0.0"
 id = "humanoid_remap_studio"
-version = "0.1.61"
-name = "Humanoid Remap Studio"
-tagline = "Automatic humanoid retargeting with topology fallback"
+version = "0.1.62"
+name = "Rig Bridge"
+tagline = "Move animation between humanoid rigs automatically"
 maintainer = "帧给你你来K"
 type = "add-on"
 tags = ["Rigging", "Animation"]

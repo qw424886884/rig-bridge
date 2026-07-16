@@ -1,4 +1,4 @@
-"""Audit Humanoid Remap Studio preset catalog samples.
+"""Audit Rig Bridge preset catalog samples.
 
 Run from the add-on source tree with regular Python:
 

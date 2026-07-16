@@ -1,4 +1,4 @@
-"""Simplified Chinese translations for Humanoid Remap Studio."""
+"""Simplified Chinese translations for Rig Bridge."""
 
 ZH_HANS = {
     ("*", '  Current: '): '  当前: ',

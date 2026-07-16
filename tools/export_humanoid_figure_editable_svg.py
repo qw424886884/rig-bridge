@@ -71,7 +71,7 @@ def export_svg(output_path: Path, neck_count: int, spine_count: int):
     )
     parts = [
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">\n',
-        f"  <title>Humanoid Remap Studio manual edit n{neck_count} s{spine_count}</title>\n",
+        f"  <title>Rig Bridge manual edit n{neck_count} s{spine_count}</title>\n",
         "  <desc>Clean editable SVG. Keep data-role/data-shape-index when saving back.</desc>\n",
         '  <rect id="background" width="512" height="512" rx="8" fill="#2a2b2b"/>\n',
     ]

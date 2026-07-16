@@ -144,7 +144,7 @@ def render_svg(neck_count, spine_count):
     )
     parts = [
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">\n',
-        f"  <title>Humanoid Remap Studio vector figure n{neck_count} s{spine_count}</title>\n",
+        f"  <title>Rig Bridge vector figure n{neck_count} s{spine_count}</title>\n",
         "  <desc>Generated from figure_layout.py vector anatomy parts; no PNG base or bitmap cuts.</desc>\n",
         '  <rect width="512" height="512" rx="8" fill="#2a2b2b"/>\n',
     ]
