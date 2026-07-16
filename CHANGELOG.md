@@ -4,6 +4,14 @@ All notable changes to Rig Bridge are documented here.
 
 ## [Unreleased]
 
+## [0.1.63] - 2026-07-16
+
+### Changed
+
+- Renamed the public GitHub repository from `humanoid-remap-studio` to `rig-bridge`
+- Updated the Blender Extensions website metadata to the canonical `https://github.com/qw424886884/rig-bridge` URL
+- Kept the extension ID, Python package name, schema IDs, and generated-action provenance marker stable for compatibility
+
 ## [0.1.62] - 2026-07-16
 
 ### Changed

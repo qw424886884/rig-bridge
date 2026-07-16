@@ -1,12 +1,12 @@
 schema_version = "1.0.0"
 id = "humanoid_remap_studio"
-version = "0.1.62"
+version = "0.1.63"
 name = "Rig Bridge"
 tagline = "Move animation between humanoid rigs automatically"
 maintainer = "帧给你你来K"
 type = "add-on"
 tags = ["Rigging", "Animation"]
-website = "https://github.com/qw424886884/humanoid-remap-studio"
+website = "https://github.com/qw424886884/rig-bridge"
 
 blender_version_min = "5.1.0"
 
