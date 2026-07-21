@@ -4,6 +4,19 @@ All notable changes to Rig Bridge are documented here.
 
 ## [Unreleased]
 
+## [0.1.64] - 2026-07-21
+
+### Changed
+
+- Removed every call to operators and runtime properties owned by other add-ons
+- Kept rig-family recognition as passive input-data matching handled by Rig Bridge itself
+- Initialize the humanoid canvas draw handler only after the user opens its operator
+
+### Removed
+
+- Add-on registration timers and the unused embedded-panel draw-handler path
+- Obsolete native retarget helpers and translations tied to the removed integration
+
 ## [0.1.63] - 2026-07-16
 
 ### Changed

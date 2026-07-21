@@ -34,29 +34,12 @@ from .preset_catalog import (
 
 from .actions import (
     action_fcurve_count,
-    action_fcurves,
     action_frame_range,
     animation_action_for_armature,
     armature_height,
     armature_vertical_axis,
-    escaped_pose_bone_data_path,
     resolved_retarget_source,
     source_base_action_for_retarget,
-)
-
-from .matcher import (
-    best_role_for_bone,
-    normalize_name,
-    normalized_aliases_for_role,
-    score_name_for_role,
-)
-
-from .preset_catalog import (
-    audit_preset_sample_sets,
-    best_matching_preset,
-    classify_bone_names,
-    preset_role_matches,
-    public_preset_profiles,
 )
 
 HRS_UI_VERSION = "v080"
@@ -294,12 +277,6 @@ def update_source_mode(self, _context):
 
 def update_source_collection(self, _context):
     reset_batch_recognition_state(self)
-
-def sync_scene_armature_names_timer():
-    for scene in bpy.data.scenes:
-        sync_armature_name_from_pointer(scene, "SOURCE")
-        sync_armature_name_from_pointer(scene, "TARGET")
-    return None
 
 def armature_bone_names(armature):
     if armature is None or getattr(armature, "type", None) != "ARMATURE":
@@ -796,142 +773,6 @@ def apply_source_forward_alignment(source, alignment):
     )
     bpy.context.view_layer.update()
 
-def source_role_map_for_auto_rig(scene):
-    source = scene.hrs_source_armature
-    roles = set(AUTO_RIG_DRIVER_ROLE_BONES.keys())
-    roles.update(visible_role_ids(scene.hrs_neck_count, scene.hrs_spine_count, scene.hrs_show_fingers))
-    structural_map = role_map_for_armature(
-        scene,
-        source,
-        roles=roles,
-        prefer_preset=bool(armature_preset_profile(source)),
-    )
-    role_map = dict(structural_map)
-    valid_slots = [
-        slot
-        for slot in scene.hrs_mapping_slots
-        if slot.role_id in roles and armature_has_bone(source, slot.source_bone)
-    ]
-    slot_bone_counts = {}
-    for slot in valid_slots:
-        slot_bone_counts[slot.source_bone] = slot_bone_counts.get(slot.source_bone, 0) + 1
-
-    for slot in valid_slots:
-        current_name = role_map.get(slot.role_id, "")
-        current_score = score_name_for_role(current_name, slot.role_id)[0] if current_name else 0.0
-        slot_score = score_name_for_role(slot.source_bone, slot.role_id)[0]
-        unique_slot_bone = slot_bone_counts.get(slot.source_bone, 0) == 1
-        if unique_slot_bone and slot_score >= 0.68 and slot_score >= current_score:
-            role_map[slot.role_id] = slot.source_bone
-        elif not current_name and unique_slot_bone:
-            role_map[slot.role_id] = slot.source_bone
-
-    finger_tokens = {
-        "thumb": ("thumb",),
-        "index": ("index",),
-        "middle": ("middle",),
-        "ring": ("ring",),
-        "pinky": ("pinky", "little"),
-    }
-
-    def explicit_finger_family(bone_name):
-        compact = "".join(character for character in bone_name.lower() if character.isalnum())
-        for family, tokens in finger_tokens.items():
-            if any(token in compact for token in tokens):
-                return family
-        return ""
-
-    def descendant_distance(bone, ancestor):
-        distance = 0
-        current = bone
-        while current is not None and current != ancestor:
-            current = current.parent
-            distance += 1
-        return distance if current == ancestor else 10_000
-
-    source_bones = source.data.bones if source else ()
-    for role_id in FINGER_ROLE_IDS.intersection(roles):
-        side, family = role_id.split("_", 1)
-        hand = source.data.bones.get(role_map.get(f"{side}_hand", "")) if source else None
-        candidates = []
-        for bone in source_bones:
-            if explicit_finger_family(bone.name) != family:
-                continue
-            role_score = score_name_for_role(bone.name, role_id)[0]
-            if role_score < 0.45:
-                continue
-            distance = descendant_distance(bone, hand) if hand else 10_000
-            candidates.append((distance < 10_000, -distance, role_score, bone.name))
-        if candidates:
-            candidates.sort(reverse=True)
-            role_map[role_id] = candidates[0][3]
-
-    for role_id in FINGER_ROLE_IDS.intersection(roles):
-        bone_name = role_map.get(role_id, "")
-        explicit_family = explicit_finger_family(bone_name)
-        expected_family = role_id.split("_", 1)[1]
-        if explicit_family and explicit_family != expected_family:
-            role_map.pop(role_id, None)
-
-    by_bone = {}
-    for role_id, bone_name in role_map.items():
-        by_bone.setdefault(bone_name, []).append(role_id)
-    for bone_name, role_ids_for_bone in by_bone.items():
-        if len(role_ids_for_bone) <= 1:
-            continue
-        ranked = []
-        for role_id in role_ids_for_bone:
-            name_score = score_name_for_role(bone_name, role_id)[0]
-            structural_bonus = 0.18 if structural_map.get(role_id) == bone_name else 0.0
-            core_bonus = 0.04 if role_id in CORE_REMAP_ROLE_IDS else 0.0
-            ranked.append((name_score + structural_bonus + core_bonus, role_id))
-        ranked.sort(reverse=True)
-        keep_role = ranked[0][1]
-        for role_id in role_ids_for_bone:
-            if role_id != keep_role:
-                role_map.pop(role_id, None)
-
-    source_action = animation_action_for_armature(source) if source else None
-    for role_id in ("left_toe", "right_toe"):
-        bone_name = role_map.get(role_id, "")
-        if bone_name and not action_bone_has_rotation_delta(source_action, bone_name):
-            role_map.pop(role_id, None)
-    return role_map
-
-def action_bone_has_rotation_delta(action, bone_name, tolerance=1.0e-4):
-    if not action or not bone_name:
-        return False
-    path_prefix = escaped_pose_bone_data_path(bone_name, "")
-    for curve in action_fcurves(action):
-        if not curve.data_path.startswith(path_prefix):
-            continue
-        suffix = curve.data_path[len(path_prefix):]
-        if suffix not in {"rotation_quaternion", "rotation_euler", "rotation_axis_angle"}:
-            continue
-        neutral = 1.0 if suffix == "rotation_quaternion" and curve.array_index == 0 else 0.0
-        for point in curve.keyframe_points:
-            if abs(float(point.co[1]) - neutral) > tolerance:
-                return True
-    return False
-
-def target_role_map_for_auto_rig(scene):
-    target = scene.hrs_target_armature
-    roles = set(AUTO_RIG_DRIVER_ROLE_BONES.keys())
-    roles.update(visible_role_ids(scene.hrs_neck_count, scene.hrs_spine_count, scene.hrs_show_fingers))
-    preset_matches = preset_role_matches(target, roles) if target else {}
-    role_map = {}
-    pose_bones = target.pose.bones if target and target.pose else {}
-    for role_id in roles:
-        match = preset_matches.get(role_id)
-        if match and armature_has_bone(target, match.get("bone_name", "")):
-            role_map[role_id] = match["bone_name"]
-            continue
-        for candidate in AUTO_RIG_DRIVER_ROLE_BONES.get(role_id, ()):
-            if candidate in pose_bones:
-                role_map[role_id] = candidate
-                break
-    return role_map
-
 def nearest_common_bone_ancestor(first_bone, second_bone):
     if not first_bone or not second_bone:
         return None
@@ -1061,40 +902,6 @@ def detect_armature_profile(armature):
     if topology["ready"]:
         return HRS_GENERIC_TOPOLOGY_LABEL
     return "Generic Humanoid"
-
-def is_auto_rig_pro_mixamo_pair(scene):
-    source_profile = detect_armature_profile(scene.hrs_source_armature)
-    target_profile = detect_armature_profile(scene.hrs_target_armature)
-    target_preset = armature_preset_profile(scene.hrs_target_armature)
-    target_is_auto_rig = target_profile == "Auto-Rig Pro" or bool(
-        target_preset and target_preset["id"] == "auto_rig_pro"
-    )
-    slot_coverage = mapping_coverage(scene, ensure=False) if hasattr(scene, "hrs_mapping_slots") else {"ready": False}
-    source_ready = bool(
-        source_profile == "Mixamo"
-        or core_topology_coverage(scene.hrs_source_armature)["ready"]
-        or slot_coverage["ready"]
-    )
-    return target_is_auto_rig and source_ready
-
-def auto_rig_pro_runtime_available(scene):
-    required_scene_properties = (
-        "source_rig",
-        "target_rig",
-        "arp_retarget_in_place",
-    )
-    required_operators = (
-        "build_bones_list",
-        "retarget",
-    )
-    return bool(
-        all(hasattr(scene, name) for name in required_scene_properties)
-        and hasattr(bpy.ops, "arp")
-        and all(hasattr(bpy.ops.arp, name) for name in required_operators)
-    )
-
-def should_use_auto_rig_pro_native(scene):
-    return is_auto_rig_pro_mixamo_pair(scene) and auto_rig_pro_runtime_available(scene)
 
 def mapping_coverage(scene, ensure=True):
     if ensure:
@@ -1226,21 +1033,13 @@ def update_source_motion_state(scene, action=None):
         scene.hrs_retarget_keep_in_place = False
     return summary
 
-def root_motion_detail_text(summary):
-    if not summary["known"]:
-        return "In-place motion will be evaluated before retargeting"
-    if summary["hasRootMotion"]:
-        return "The source Action contains root motion; In-Place is available"
-    return "The source Action is already in place; no extra variant is needed"
-
 def update_auto_summary(scene, assigned=0):
     source_profile = detect_armature_profile(scene.hrs_source_armature)
     target_profile = detect_armature_profile(scene.hrs_target_armature)
     source_preset = armature_preset_profile(scene.hrs_source_armature)
     target_preset = armature_preset_profile(scene.hrs_target_armature)
     coverage = mapping_coverage(scene)
-    motion_summary = update_source_motion_state(scene)
-    arp_native_ready = should_use_auto_rig_pro_native(scene)
+    update_source_motion_state(scene)
     preset_route_ready = bool(source_preset and target_preset)
     posture_gate = retarget_posture_gate(scene)
     scene.hrs_source_profile = source_profile
@@ -1248,7 +1047,7 @@ def update_auto_summary(scene, assigned=0):
     scene.hrs_can_execute_retarget = bool(
         scene.hrs_source_armature
         and scene.hrs_target_armature
-        and (coverage["ready"] or arp_native_ready)
+        and coverage["ready"]
         and posture_gate["passed"]
     )
     if not scene.hrs_source_armature or not scene.hrs_target_armature:
@@ -1267,13 +1066,7 @@ def update_auto_summary(scene, assigned=0):
             "The generic automatic retarget workflow will run."
         )
         return coverage
-    if arp_native_ready:
-        source_route = "preset library" if source_preset else "hierarchy and topology"
-        scene.hrs_auto_detail = (
-            f"The target is Auto-Rig Pro; the source was identified through {source_route} identification."
-            f"The automatic FK retarget workflow will run; {root_motion_detail_text(motion_summary)}."
-        )
-    elif preset_route_ready and coverage["ready"]:
+    if preset_route_ready and coverage["ready"]:
         scene.hrs_auto_detail = (
             f"Preset match: {source_profile} -> {target_profile}; "
             "The generic automatic retarget workflow will run."

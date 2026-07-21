@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Rig Bridge",
     "author": "帧给你你来K",
-    "version": (0, 1, 63),
+    "version": (0, 1, 64),
     "blender": (5, 1, 0),
     "location": "View3D > Sidebar > Motion Remap > Humanoid Retarget",
     "description": "Move animation between humanoid rigs automatically.",
@@ -31,7 +31,6 @@ CLASSES = (
     operators.HRS_OT_execute_retarget,
     operators.HRS_OT_clear_retarget_result,
     canvas.HRS_OT_open_humanoid_canvas,
-    canvas.HRS_OT_panel_figure_modal,
     operators.HRS_OT_auto_guess,
     ui.HRS_UL_mapping_slots,
     ui.HRS_PT_main,
@@ -65,7 +64,6 @@ SCENE_PROPERTIES = (
     "hrs_auto_detail",
     "hrs_auto_summary",
     "hrs_show_mapping_status",
-    "hrs_panel_canvas_height",
     "hrs_show_manual_correction",
     "hrs_show_native_role_buttons",
     "hrs_show_fingers",
@@ -88,15 +86,10 @@ def register():
         bpy.app.translations.register(TRANSLATION_DOMAIN, translations.TRANSLATIONS)
         _TRANSLATIONS_REGISTERED = True
 
-    canvas.HRS_PANEL_CLICK_MODAL_RUNNING = False
     canvas.clear_humanoid_canvas_handlers()
-    canvas.clear_humanoid_panel_draw_handlers()
     canvas.clear_humanoid_previews()
     for cls in CLASSES:
         bpy.utils.register_class(cls)
-    if canvas.HRS_PANEL_EMBEDDED_CLICK_ENABLED:
-        canvas.ensure_humanoid_panel_draw_handler()
-        bpy.app.timers.register(canvas.start_panel_figure_modal, first_interval=0.2)
 
     bpy.types.Scene.hrs_source_mode = EnumProperty(
         name="Source Mode",
@@ -146,10 +139,6 @@ def register():
         name="Show Manual Slot Buttons", default=False
     )
     bpy.types.Scene.hrs_show_manual_correction = BoolProperty(name="Show Manual Correction", default=False)
-    bpy.types.Scene.hrs_panel_canvas_height = IntProperty(
-        name="Humanoid Figure Height", default=canvas.HRS_PANEL_DEFAULT_HEIGHT,
-        min=canvas.HRS_PANEL_MIN_HEIGHT, max=canvas.HRS_PANEL_MAX_HEIGHT,
-    )
     bpy.types.Scene.hrs_show_mapping_status = BoolProperty(name="Show Mapping Status", default=False)
     bpy.types.Scene.hrs_auto_summary = StringProperty(name="Detection Summary", default="Auto Detect has not been run.")
     bpy.types.Scene.hrs_auto_detail = StringProperty(
@@ -187,18 +176,12 @@ def register():
     )
     bpy.types.Scene.hrs_mapping_slot_index = IntProperty(default=0)
     bpy.types.Scene.hrs_mapping_slots = CollectionProperty(type=operators.HRSMappingSlot)
-    bpy.app.timers.register(core.sync_scene_armature_names_timer, first_interval=0.1)
 
 
 def unregister():
     global _TRANSLATIONS_REGISTERED
-    canvas.HRS_PANEL_CLICK_MODAL_RUNNING = False
     canvas.clear_humanoid_canvas_handlers()
-    canvas.clear_humanoid_panel_draw_handlers()
     canvas.clear_humanoid_previews()
-    for timer in (canvas.start_panel_figure_modal, core.sync_scene_armature_names_timer):
-        if bpy.app.timers.is_registered(timer):
-            bpy.app.timers.unregister(timer)
     for prop_name in SCENE_PROPERTIES:
         if hasattr(bpy.types.Scene, prop_name):
             delattr(bpy.types.Scene, prop_name)

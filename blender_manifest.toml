@@ -1,6 +1,6 @@
 schema_version = "1.0.0"
 id = "humanoid_remap_studio"
-version = "0.1.63"
+version = "0.1.64"
 name = "Rig Bridge"
 tagline = "Move animation between humanoid rigs automatically"
 maintainer = "帧给你你来K"

@@ -14,15 +14,32 @@ PACKAGE_PARENT = str(Path(__file__).resolve().parents[2])
 if PACKAGE_PARENT not in sys.path:
     sys.path.insert(0, PACKAGE_PARENT)
 
-import humanoid_remap_studio as hrs
+import humanoid_remap_studio as addon
+from humanoid_remap_studio.actions import (
+    action_fcurve_count,
+    action_fcurves,
+    animation_action_for_armature,
+    escaped_pose_bone_data_path,
+)
+from humanoid_remap_studio.core import (
+    CORE_REMAP_ROLE_IDS,
+    armature_preset_profile,
+    auto_guess_pair,
+    mapping_coverage,
+    merged_role_matches_for_armature,
+    retarget_posture_gate,
+    set_scene_armature,
+)
+from humanoid_remap_studio.human_schema import FINGER_ROLE_IDS
+from humanoid_remap_studio.retarget import mapped_retarget_pairs, reset_armature_pose_to_rest
 
 
 TEMP_PREFIX = "HRS_GENERALIZATION"
 ASSERTED_ROLES = tuple(dict.fromkeys((
-    *hrs.CORE_REMAP_ROLE_IDS,
+    *CORE_REMAP_ROLE_IDS,
     "left_toe",
     "right_toe",
-    *sorted(hrs.FINGER_ROLE_IDS),
+    *sorted(FINGER_ROLE_IDS),
 )))
 SEGMENTS = (
     ("hips", "spine_01"),
@@ -78,7 +95,7 @@ def role_map(matches):
 
 
 def baseline_roles(obj):
-    return role_map(hrs.merged_role_matches_for_armature(obj, ASSERTED_ROLES, prefer_preset=True))
+    return role_map(merged_role_matches_for_armature(obj, ASSERTED_ROLES, prefer_preset=True))
 
 
 def mapping_mismatches(actual, expected):
@@ -110,12 +127,12 @@ def mapping_mismatches(actual, expected):
 
 
 def rename_action_paths(action, mapping):
-    for curve in hrs.action_fcurves(action):
+    for curve in action_fcurves(action):
         for old_name, new_name in mapping.items():
-            old_prefix = hrs.escaped_pose_bone_data_path(old_name, "")
+            old_prefix = escaped_pose_bone_data_path(old_name, "")
             if not curve.data_path.startswith(old_prefix):
                 continue
-            new_prefix = hrs.escaped_pose_bone_data_path(new_name, "")
+            new_prefix = escaped_pose_bone_data_path(new_name, "")
             curve.data_path = new_prefix + curve.data_path[len(old_prefix):]
             break
 
@@ -348,7 +365,7 @@ def remove_action(action):
 def main():
     args = parse_args()
     if not hasattr(bpy.types.Scene, "hrs_source_armature"):
-        hrs.register()
+        addon.register()
     scene = bpy.context.scene
     original_source = scene.objects.get(args.source)
     original_target = scene.objects.get(args.target)
@@ -356,7 +373,7 @@ def main():
         raise RuntimeError(f"source armature not found: {args.source}")
     if not original_target or original_target.type != "ARMATURE":
         raise RuntimeError(f"target armature not found: {args.target}")
-    base_action = hrs.animation_action_for_armature(original_source)
+    base_action = animation_action_for_armature(original_source)
     if not base_action:
         raise RuntimeError(f"source action not found: {args.source}")
 
@@ -373,7 +390,7 @@ def main():
         trim_action(source_action, args.max_frame)
         source_copy = clone_armature(original_source, TEMP_PREFIX + "_SOURCE", source_action)
         target_copy = clone_armature(original_target, TEMP_PREFIX + "_TARGET")
-        hrs.reset_armature_pose_to_rest(target_copy)
+        reset_armature_pose_to_rest(target_copy)
         source_names = scramble_bones(source_copy, "GEN_SRC", source_action)
         target_names = scramble_bones(target_copy, "GEN_TGT")
         source_expected = {
@@ -386,10 +403,10 @@ def main():
             for role_id, name in target_baseline.items()
             if name in target_names
         }
-        source_roles = role_map(hrs.merged_role_matches_for_armature(
+        source_roles = role_map(merged_role_matches_for_armature(
             source_copy, ASSERTED_ROLES, prefer_preset=False
         ))
-        target_roles = role_map(hrs.merged_role_matches_for_armature(
+        target_roles = role_map(merged_role_matches_for_armature(
             target_copy, ASSERTED_ROLES, prefer_preset=False
         ))
         source_text_mismatch, source_mismatch, source_side_flips = mapping_mismatches(
@@ -401,10 +418,10 @@ def main():
 
         scene.hrs_source_mode = "SINGLE"
         scene.hrs_show_fingers = True
-        hrs.set_scene_armature(scene, "SOURCE", source_copy)
-        hrs.set_scene_armature(scene, "TARGET", target_copy)
-        assigned = hrs.auto_guess_pair(scene, overwrite_manual=True)
-        coverage = hrs.mapping_coverage(scene)
+        set_scene_armature(scene, "SOURCE", source_copy)
+        set_scene_armature(scene, "TARGET", target_copy)
+        assigned = auto_guess_pair(scene, overwrite_manual=True)
+        coverage = mapping_coverage(scene)
         if bpy.context.object and bpy.context.object.mode != "OBJECT":
             bpy.ops.object.mode_set(mode="OBJECT")
         bpy.ops.object.select_all(action="DESELECT")
@@ -422,22 +439,22 @@ def main():
             for slot in scene.hrs_mapping_slots
             if slot.role_id in ASSERTED_ROLES and slot.source_bone and slot.target_bone
         }
-        retarget_pairs = hrs.mapped_retarget_pairs(scene)
+        retarget_pairs = mapped_retarget_pairs(scene)
         finger_pair_counts = {
             role_id: sum(pair.get("role_id") == role_id for pair in retarget_pairs)
-            for role_id in sorted(hrs.FINGER_ROLE_IDS)
+            for role_id in sorted(FINGER_ROLE_IDS)
         }
         finger_chain_complete = bool(
-            len(finger_pair_counts) == len(hrs.FINGER_ROLE_IDS)
+            len(finger_pair_counts) == len(FINGER_ROLE_IDS)
             and all(count >= 3 for count in finger_pair_counts.values())
         )
         animated_finger_targets = []
         if result_action:
-            curves = hrs.action_fcurves(result_action)
+            curves = action_fcurves(result_action)
             for pair in retarget_pairs:
-                if pair.get("role_id") not in hrs.FINGER_ROLE_IDS:
+                if pair.get("role_id") not in FINGER_ROLE_IDS:
                     continue
-                prefix = hrs.escaped_pose_bone_data_path(pair["target"].name, "")
+                prefix = escaped_pose_bone_data_path(pair["target"].name, "")
                 if any(curve.data_path.startswith(prefix) for curve in curves):
                     animated_finger_targets.append(pair["target"].name)
         finger_pair_total = sum(finger_pair_counts.values())
@@ -467,8 +484,8 @@ def main():
         )
         mean_error = sum(direction_errors) / len(direction_errors) if direction_errors else 999.0
         max_error = max(direction_errors, default=999.0)
-        source_preset = (hrs.armature_preset_profile(source_copy) or {}).get("id", "")
-        target_preset = (hrs.armature_preset_profile(target_copy) or {}).get("id", "")
+        source_preset = (armature_preset_profile(source_copy) or {}).get("id", "")
+        target_preset = (armature_preset_profile(target_copy) or {}).get("id", "")
         report = {
             "passed": bool(
                 coverage["ready"]
@@ -509,9 +526,9 @@ def main():
             "target_coherent_text_side_flips": target_side_flips,
             "operator_result": operator_result,
             "operator_error": operator_error,
-            "posture_gate": hrs.retarget_posture_gate(scene),
+            "posture_gate": retarget_posture_gate(scene),
             "result_action": result_action.name if result_action else "",
-            "result_fcurves": hrs.action_fcurve_count(result_action) if result_action else 0,
+            "result_fcurves": action_fcurve_count(result_action) if result_action else 0,
             "sample_frames": frames,
             "direction_error_mean_degrees": mean_error,
             "direction_error_max_degrees": max_error,

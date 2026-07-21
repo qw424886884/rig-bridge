@@ -13,7 +13,6 @@ from .core import (
     retarget_posture_gate,
     selected_armature_object,
     set_scene_armature,
-    should_use_auto_rig_pro_native,
     update_auto_summary,
     update_batch_summary,
 )
@@ -21,9 +20,7 @@ from .retarget import (
     bake_retarget_action,
     clear_batch_retarget_results,
     clear_retarget_result,
-    execute_auto_rig_pro_mixamo_retarget_pair,
     execute_batch_retarget,
-    retarget_variant_label,
 )
 
 class HRSMappingSlot(PropertyGroup):
@@ -155,41 +152,27 @@ class HRS_OT_execute_retarget(Operator):
             scene.hrs_retarget_status = posture_gate["detail"]
             self.report({"ERROR"}, scene.hrs_retarget_status)
             return {"CANCELLED"}
-        use_arp_native = should_use_auto_rig_pro_native(scene)
-        if not coverage["ready"] and not use_arp_native:
+        if not coverage["ready"]:
             scene.hrs_retarget_status = "No stable automatic workflow was found. Confirm that both rigs are humanoid armatures."
             self.report({"ERROR"}, scene.hrs_retarget_status)
             return {"CANCELLED"}
         try:
-            if use_arp_native:
-                result = execute_auto_rig_pro_mixamo_retarget_pair(scene)
-            else:
-                result = bake_retarget_action(scene)
+            result = bake_retarget_action(scene)
         except Exception as error:
             scene.hrs_retarget_status = f"Retarget failed: {error}"
             self.report({"ERROR"}, scene.hrs_retarget_status)
             return {"CANCELLED"}
-        if use_arp_native:
-            place_text = retarget_variant_label(scene.hrs_retarget_keep_in_place)
-            if result["sourceRootMotionKnown"] and not result["sourceHasRootMotion"]:
-                place_text = "No in-place variant needed"
-            source_profile = detect_armature_profile(scene.hrs_source_armature)
-            target_profile = detect_armature_profile(scene.hrs_target_armature)
-            scene.hrs_retarget_status = (
-                f"Automatic retarget completed: {source_profile} -> {target_profile}; current variant: {place_text}."
-            )
-        else:
-            source_profile = detect_armature_profile(scene.hrs_source_armature)
-            target_profile = detect_armature_profile(scene.hrs_target_armature)
-            scene.hrs_retarget_status = (
-                f"Automatic retarget completed: {source_profile} -> {target_profile}."
-            )
-        if (not use_arp_native) and result.get("sourceResolutionChain"):
+        source_profile = detect_armature_profile(scene.hrs_source_armature)
+        target_profile = detect_armature_profile(scene.hrs_target_armature)
+        scene.hrs_retarget_status = (
+            f"Automatic retarget completed: {source_profile} -> {target_profile}."
+        )
+        if result.get("sourceResolutionChain"):
             source_profile = detect_armature_profile(scene.hrs_source_armature)
             target_profile = detect_armature_profile(scene.hrs_target_armature)
             resolved_profile = detect_armature_profile(result.get("resolvedSource"))
             scene.hrs_retarget_status = (
-                f"Automatic retarget completed: {source_profile} (resolved source: {resolved_profile}） -> {target_profile}."
+                f"Automatic retarget completed: {source_profile} (resolved source: {resolved_profile}) -> {target_profile}."
             )
         self.report({"INFO"}, scene.hrs_retarget_status)
         return {"FINISHED"}

@@ -6,10 +6,9 @@ import time
 import uuid
 
 import bpy
-from mathutils import Matrix, Vector
+from mathutils import Matrix
 
-from .human_schema import FINGER_ROLE_IDS, HUMAN_ROLE_BY_ID, visible_role_ids
-from .matcher import normalize_name
+from .human_schema import FINGER_ROLE_IDS, visible_role_ids
 
 from .actions import (
     action_assigned_to_armature,
@@ -37,26 +36,18 @@ from .core import (
     HRS_RETARGET_HISTORY_KEY,
     HRS_RETARGET_HISTORY_LIMIT,
     HRS_UI_VERSION,
-    apply_source_forward_alignment,
-    armature_has_bone,
     armature_preset_profile,
     auto_guess_pair,
     batch_collection_audit,
     detect_armature_profile,
     ensure_slots,
     mapping_coverage,
-    pose_bone_world_location,
     retarget_posture_gate,
     retarget_role_ids,
     role_map_for_armature,
     set_scene_armature,
-    should_use_auto_rig_pro_native,
     slot_pair_valid,
     source_motion_root_bone,
-    source_pelvis_bone_name,
-    source_role_map_for_auto_rig,
-    source_target_forward_alignment,
-    target_role_map_for_auto_rig,
     update_batch_summary,
     update_source_motion_state,
 )
@@ -643,475 +634,6 @@ def bake_retarget_action(scene):
         "originalFrame": original_frame,
     }
 
-def operator_result(callable_op):
-    try:
-        return sorted(callable_op())
-    except RuntimeError as error:
-        return [f"EXCEPTION:{error}"]
-
-def pose_bone_world_direction(armature, bone_name):
-    if not armature or not armature.pose:
-        return None
-    pose_bone = armature.pose.bones.get(bone_name)
-    if pose_bone is None:
-        return None
-    vector = (armature.matrix_world @ pose_bone.tail) - (armature.matrix_world @ pose_bone.head)
-    if vector.length <= 1.0e-6:
-        return None
-    return vector.normalized()
-
-def mapped_bone_direction_angles(source, target, mapped_items):
-    angles = []
-    for item in mapped_items:
-        source_vector = pose_bone_world_direction(source, item.source_bone)
-        target_vector = pose_bone_world_direction(target, item.name)
-        if source_vector is None or target_vector is None:
-            continue
-        try:
-            angles.append(math.degrees(source_vector.angle(target_vector, 0.0)))
-        except ValueError:
-            continue
-    return angles
-
-def clear_auto_rig_redefine_state(scene, source):
-    for key in ("remap_redefine_rest_pose", "remap_redefine_preserve"):
-        if source and key in source.keys():
-            del source[key]
-    if "rest_transf_offset" in scene.keys():
-        del scene["rest_transf_offset"]
-    for obj in list(bpy.data.objects):
-        if source and obj.name == source.name + "_copy":
-            bpy.data.objects.remove(obj, do_unlink=True)
-        elif "arp_remap_emp_track" in obj.keys():
-            bpy.data.objects.remove(obj, do_unlink=True)
-
-def auto_rig_role_for_target_name(target_name):
-    if not target_name or target_name == "None":
-        return None
-    for role_id, candidates in AUTO_RIG_DRIVER_ROLE_BONES.items():
-        if target_name in candidates:
-            return role_id
-    return None
-
-def apply_source_role_map_to_auto_rig(scene):
-    if not hasattr(scene, "bones_map_v2"):
-        return {"assigned": 0, "missingCore": list(CORE_REMAP_ROLE_IDS), "roleMap": {}}
-    source = scene.hrs_source_armature
-    role_map = source_role_map_for_auto_rig(scene)
-    assigned = 0
-    touched_roles = set()
-    for item in scene.bones_map_v2:
-        role_id = auto_rig_role_for_target_name(getattr(item, "name", ""))
-        if not role_id:
-            continue
-        source_bone = role_map.get(role_id)
-        if source_bone and armature_has_bone(source, source_bone):
-            item.source_bone = source_bone
-            assigned += 1
-            touched_roles.add(role_id)
-    missing_core = [role_id for role_id in CORE_REMAP_ROLE_IDS if role_id not in touched_roles]
-    return {
-        "assigned": assigned,
-        "missingCore": missing_core,
-        "roleMap": role_map,
-    }
-
-def clear_auto_rig_bones_map(scene):
-    if not hasattr(scene, "bones_map_v2"):
-        return
-    collection = scene.bones_map_v2
-    if hasattr(collection, "clear"):
-        collection.clear()
-        return
-    while len(collection):
-        collection.remove(len(collection) - 1)
-
-def rebuild_auto_rig_map_from_roles(scene):
-    if not hasattr(scene, "bones_map_v2"):
-        return {
-            "assigned": 0,
-            "missingCore": list(CORE_REMAP_ROLE_IDS),
-            "missingTargetCore": list(CORE_REMAP_ROLE_IDS),
-            "sourceRoleMap": {},
-            "targetRoleMap": {},
-        }
-    source_map = source_role_map_for_auto_rig(scene)
-    target_map = target_role_map_for_auto_rig(scene)
-    clear_auto_rig_bones_map(scene)
-    assigned = 0
-    ordered_roles = [role["id"] for role in HUMAN_ROLES if role["id"] in set(source_map) | set(target_map)]
-    for role_id in ordered_roles:
-        source_bone = source_map.get(role_id)
-        target_bone = target_map.get(role_id)
-        if not source_bone or not target_bone:
-            continue
-        item = scene.bones_map_v2.add()
-        item.name = target_bone
-        item.source_bone = source_bone
-        if hasattr(item, "ik"):
-            item.ik = False
-        if hasattr(item, "ik_world"):
-            item.ik_world = False
-        if hasattr(item, "ik_create_constraints"):
-            item.ik_create_constraints = False
-        if hasattr(item, "location"):
-            item.location = False
-        if hasattr(item, "set_as_root"):
-            item.set_as_root = role_id == "hips"
-        assigned += 1
-    source_pelvis = source_pelvis_bone_name(scene, source_map)
-    target_pelvis = "c_root.x" if armature_has_bone(scene.hrs_target_armature, "c_root.x") else ""
-    if source_pelvis and target_pelvis and source_pelvis != source_map.get("hips"):
-        item = scene.bones_map_v2.add()
-        item.name = target_pelvis
-        item.source_bone = source_pelvis
-        if hasattr(item, "ik"):
-            item.ik = False
-        if hasattr(item, "ik_world"):
-            item.ik_world = False
-        if hasattr(item, "ik_create_constraints"):
-            item.ik_create_constraints = False
-        if hasattr(item, "location"):
-            item.location = False
-        if hasattr(item, "set_as_root"):
-            item.set_as_root = False
-        assigned += 1
-    missing_core = [role_id for role_id in CORE_REMAP_ROLE_IDS if role_id not in source_map]
-    missing_target_core = [role_id for role_id in CORE_REMAP_ROLE_IDS if role_id not in target_map]
-    return {
-        "assigned": assigned,
-        "missingCore": missing_core,
-        "missingTargetCore": missing_target_core,
-        "sourceRoleMap": source_map,
-        "targetRoleMap": target_map,
-    }
-
-def force_auto_rig_fk_mapping(scene):
-    mapped_items = []
-    if not hasattr(scene, "bones_map_v2"):
-        return mapped_items
-    if hasattr(scene, "arp_remap_allow_root_update"):
-        scene.arp_remap_allow_root_update = False
-    root_item = next(
-        (item for item in scene.bones_map_v2 if item.name == "c_root_master.x"),
-        None,
-    )
-    if root_item is None:
-        root_item = next(
-            (
-                item
-                for item in scene.bones_map_v2
-                if item.source_bone == "Hips" or item.source_bone.endswith(":Hips")
-            ),
-            None,
-        )
-    if root_item is None:
-        root_item = next(
-            (item for item in scene.bones_map_v2 if auto_rig_role_for_target_name(item.name) == "hips"),
-            None,
-        )
-    for item in scene.bones_map_v2:
-        item.set_as_root = False
-        item.ik = False
-        item.ik_world = False
-        item.ik_create_constraints = False
-        if item == root_item:
-            item.set_as_root = True
-            item.location = False
-    if hasattr(scene, "arp_remap_allow_root_update"):
-        scene.arp_remap_allow_root_update = True
-    for index, item in enumerate(scene.bones_map_v2):
-        if item.set_as_root:
-            scene.bones_map_index = index
-            break
-    source = scene.hrs_source_armature
-    for item in scene.bones_map_v2:
-        if item.name and item.name != "None" and armature_has_bone(source, item.source_bone):
-            mapped_items.append(item)
-    return mapped_items
-
-def select_auto_rig_redefine_source_bones(source, mapped_items):
-    bpy.ops.object.mode_set(mode="OBJECT")
-    bpy.ops.object.select_all(action="DESELECT")
-    source.select_set(True)
-    bpy.context.view_layer.objects.active = source
-    bpy.ops.object.mode_set(mode="POSE")
-    bpy.ops.pose.select_all(action="DESELECT")
-    selected = []
-    for item in mapped_items:
-        if not item.name or item.name == "None":
-            continue
-        pose_bone = source.pose.bones.get(item.source_bone)
-        if pose_bone is None:
-            continue
-        if hasattr(pose_bone, "select"):
-            pose_bone.select = True
-        else:
-            pose_bone.bone.select = True
-        source.data.bones.active = pose_bone.bone
-        selected.append(item.source_bone)
-    return selected
-
-def scale_action_bone_location(action, bone_name, scale):
-    if not action or not bone_name or not math.isfinite(scale) or scale <= 0.0:
-        return 0
-    if abs(scale - 1.0) <= 1.0e-6:
-        return 0
-    data_path = escaped_pose_bone_data_path(bone_name, "location")
-    scaled_channels = 0
-    for fcurve in action_fcurves(action):
-        if fcurve.data_path != data_path:
-            continue
-        for point in fcurve.keyframe_points:
-            point.co[1] *= scale
-            point.handle_left[1] *= scale
-            point.handle_right[1] *= scale
-        fcurve.update()
-        scaled_channels += 1
-    return scaled_channels
-
-def shift_action_bone_location_channel(action, bone_name, array_index, offset):
-    if not action or not bone_name or not math.isfinite(offset) or abs(offset) <= 1.0e-8:
-        return False
-    data_path = escaped_pose_bone_data_path(bone_name, "location")
-    for fcurve in action_fcurves(action):
-        if fcurve.data_path != data_path or fcurve.array_index != array_index:
-            continue
-        for point in fcurve.keyframe_points:
-            point.co[1] += offset
-            point.handle_left[1] += offset
-            point.handle_right[1] += offset
-        fcurve.update()
-        return True
-    return False
-
-def align_action_root_height(scene, source, target, action, root_bone_name, source_map, target_map, scale, frame):
-    source_feet = [
-        source.pose.bones.get(source_map.get(role_id, ""))
-        for role_id in ("left_foot", "right_foot")
-    ]
-    target_feet = [
-        target.pose.bones.get(target_map.get(role_id, ""))
-        for role_id in ("left_foot", "right_foot")
-    ]
-    source_feet = [bone for bone in source_feet if bone]
-    target_feet = [bone for bone in target_feet if bone]
-    root_bone = target.pose.bones.get(root_bone_name) if target and target.pose else None
-    if not source_feet or not target_feet or not root_bone:
-        return {"applied": False, "reason": "missing-foot-or-root"}
-
-    original_frame = scene.frame_current
-    scene.frame_set(frame)
-    bpy.context.view_layer.update()
-    source_floor = min(pose_bone_world_location(source, bone).z for bone in source_feet)
-    target_floor = min(pose_bone_world_location(target, bone).z for bone in target_feet)
-    source_origin_z = float(source.matrix_world.translation.z)
-    target_origin_z = float(target.matrix_world.translation.z)
-    desired_floor = target_origin_z + (source_floor - source_origin_z) * scale
-    world_offset = desired_floor - target_floor
-
-    original_location = root_bone.location.copy()
-    base_world_z = pose_bone_world_location(target, root_bone).z
-    influences = []
-    epsilon = 0.01
-    for axis in range(3):
-        root_bone.location = original_location.copy()
-        root_bone.location[axis] += epsilon
-        bpy.context.view_layer.update()
-        shifted_world_z = pose_bone_world_location(target, root_bone).z
-        influences.append((shifted_world_z - base_world_z) / epsilon)
-    root_bone.location = original_location
-    bpy.context.view_layer.update()
-    vertical_axis = max(range(3), key=lambda axis: abs(influences[axis]))
-    influence = influences[vertical_axis]
-    if abs(influence) <= 1.0e-5:
-        scene.frame_set(original_frame)
-        bpy.context.view_layer.update()
-        return {"applied": False, "reason": "no-vertical-root-channel"}
-    local_offset = world_offset / influence
-    applied = shift_action_bone_location_channel(action, root_bone_name, vertical_axis, local_offset)
-    scene.frame_set(original_frame)
-    bpy.context.view_layer.update()
-    return {
-        "applied": bool(applied),
-        "frame": int(frame),
-        "sourceFloor": float(source_floor),
-        "targetFloorBefore": float(target_floor),
-        "desiredFloor": float(desired_floor),
-        "worldOffset": float(world_offset),
-        "rootLocationAxis": int(vertical_axis),
-        "axisInfluence": float(influence),
-        "localOffset": float(local_offset),
-    }
-
-def _execute_auto_rig_pro_mixamo_retarget_aligned(scene, keep_in_place=None, source_action_override=None):
-    source = scene.hrs_source_armature
-    target = scene.hrs_target_armature
-    if not hasattr(scene, "source_rig") or not hasattr(bpy.ops, "arp"):
-        raise RuntimeError("Auto-Rig Pro Remap runtime properties were not detected. Enable Auto-Rig Pro first.")
-    source_action = source_action_override or animation_action_for_armature(source)
-    if source_action is None:
-        raise RuntimeError("The source armature has no active Action for Auto-Rig Pro retargeting.")
-    source.animation_data_create()
-    source.animation_data.action = source_action
-    use_keep_in_place = bool(scene.hrs_retarget_keep_in_place if keep_in_place is None else keep_in_place)
-
-    bpy.ops.object.mode_set(mode="OBJECT")
-    bpy.ops.object.select_all(action="DESELECT")
-    target.select_set(True)
-    bpy.context.view_layer.objects.active = target
-
-    clear_auto_rig_redefine_state(scene, source)
-    scene.source_rig = source.name
-    scene.target_rig = target.name
-    scene.arp_retarget_in_place = use_keep_in_place
-    scene.batch_retarget = False
-    scene.arp_show_freeze_warn = False
-
-    build_result = operator_result(lambda: bpy.ops.arp.build_bones_list())
-    import_result = ["HRS_STRUCTURAL_MAP"]
-    source_map_result = rebuild_auto_rig_map_from_roles(scene)
-    mapped_items = force_auto_rig_fk_mapping(scene)
-    root_items = [item for item in mapped_items if item.set_as_root]
-    if source_map_result["missingCore"]:
-        missing = ", ".join(source_map_result["missingCore"])
-        raise RuntimeError(f"ARP source structural mapping is incomplete: {missing}")
-    if source_map_result.get("missingTargetCore"):
-        missing = ", ".join(source_map_result["missingTargetCore"])
-        raise RuntimeError(f"ARP target structural mapping is incomplete: {missing}")
-    if "FINISHED" not in build_result:
-        raise RuntimeError(f"Auto-Rig Pro Build Bones List failed: {build_result}")
-    if not mapped_items:
-        raise RuntimeError(f"The Auto-Rig Pro Mixamo FK preset did not create a valid mapping: {import_result}")
-    if len(root_items) != 1:
-        raise RuntimeError("The Auto-Rig Pro Mixamo FK mapping has no unique root. Check Hips -> c_root_master.x.")
-
-    angles = mapped_bone_direction_angles(source, target, mapped_items)
-    max_angle = max(angles) if angles else 0.0
-    rest_delta_needed = bool(scene.hrs_retarget_auto_rest_delta and (not angles or max_angle >= 5.0))
-    redefine_result = []
-    copy_rest_result = []
-    save_rest_result = []
-    selected_sources = []
-    if rest_delta_needed:
-        redefine_result = operator_result(lambda: bpy.ops.arp.redefine_rest_pose(preserve=True, rest_pose="REST"))
-        selected_sources = select_auto_rig_redefine_source_bones(source, mapped_items)
-        copy_rest_result = operator_result(lambda: bpy.ops.arp.copy_bone_rest())
-        save_rest_result = operator_result(lambda: bpy.ops.arp.save_pose_rest())
-        if "FINISHED" not in redefine_result or "FINISHED" not in copy_rest_result or "FINISHED" not in save_rest_result:
-            raise RuntimeError(
-                "Auto-Rig Pro rest-pose redefinition failed: "
-                f"redefine={redefine_result} copy={copy_rest_result} save={save_rest_result}"
-            )
-
-    current_action = animation_action_for_armature(source)
-    if current_action is None:
-        raise RuntimeError("The source Action was lost before Auto-Rig Pro retargeting.")
-    start_frame, end_frame = action_frame_range(current_action, scene)
-    before_action = target.animation_data.action if target.animation_data else None
-    retarget_result = operator_result(
-        lambda: bpy.ops.arp.retarget(
-            frame_start=start_frame,
-            frame_end=end_frame,
-            # Auto-Rig Pro's FK rotation cleanup can over-roll FK hands/arms
-            # after the Mixamo rest-pose alignment step. Keep ARP's baked FK
-            # result intact for this preset route.
-            clean_fk_rot=False,
-            clean_ik_pole=False,
-            only_existing_keyframes=False,
-            extract_root_motion=False,
-            fake_user_action=False,
-            interpolation_type="LINEAR",
-            handle_type="DEFAULT",
-        )
-    )
-    after_action = target.animation_data.action if target.animation_data else None
-    if "FINISHED" not in retarget_result or after_action is None or after_action == before_action:
-        raise RuntimeError(f"Auto-Rig Pro Retarget did not create a target Action: {retarget_result}")
-    root_motion_scale = armature_height(target) / max(armature_height(source), 1.0e-8)
-    root_location_channels = scale_action_bone_location(after_action, root_items[0].name, root_motion_scale)
-    root_height_alignment = align_action_root_height(
-        scene,
-        source,
-        target,
-        after_action,
-        root_items[0].name,
-        source_map_result["sourceRoleMap"],
-        source_map_result["targetRoleMap"],
-        root_motion_scale,
-        start_frame,
-    )
-    if current_action != source_action:
-        current_action["hrs_runtime_in_place_action"] = True
-        current_action["hrs_source_armature"] = source.name
-        current_action["hrs_source_action"] = source_action.name
-        current_action["hrs_created_by"] = f"Humanoid Remap Studio {HRS_UI_VERSION}"
-    after_action.name = retarget_variant_action_name(source_action.name, target, use_keep_in_place)
-    after_action["hrs_retarget_result"] = True
-    after_action["hrs_source_armature"] = source.name
-    after_action["hrs_target_armature"] = target.name
-    after_action["hrs_source_action"] = source_action.name
-    after_action["hrs_runtime_source_action"] = current_action.name
-    after_action["hrs_retarget_variant"] = retarget_variant_key(use_keep_in_place)
-    after_action["hrs_source_map_assigned"] = source_map_result["assigned"]
-    after_action["hrs_root_motion_scale"] = float(root_motion_scale)
-    after_action["hrs_root_location_channels_scaled"] = int(root_location_channels)
-    after_action["hrs_root_height_offset"] = float(root_height_alignment.get("worldOffset", 0.0))
-    after_action["hrs_created_by"] = f"Humanoid Remap Studio {HRS_UI_VERSION}"
-    after_action["hrs_source_uid"] = ensure_hrs_object_uid(source)
-    after_action["hrs_target_uid"] = ensure_hrs_object_uid(target)
-    record_retarget_history(scene, after_action, source, target, source_action, after_action["hrs_retarget_variant"])
-
-    return {
-        "action": after_action,
-        "sourceAction": current_action,
-        "baseSourceAction": source_action,
-        "variant": retarget_variant_key(use_keep_in_place),
-        "keepInPlace": use_keep_in_place,
-        "startFrame": start_frame,
-        "endFrame": end_frame,
-        "frames": end_frame - start_frame + 1,
-        "pairs": len(mapped_items),
-        "fcurves": action_fcurve_count(after_action),
-        "root": root_items[0].name,
-        "rootMotionScale": root_motion_scale,
-        "rootLocationChannelsScaled": root_location_channels,
-        "rootHeightAlignment": root_height_alignment,
-        "restDeltaNeeded": rest_delta_needed,
-        "maxRestAngle": max_angle,
-        "selectedRestSources": len(selected_sources),
-        "sourceMapAssigned": source_map_result["assigned"],
-        "importResult": import_result,
-        "retargetResult": retarget_result,
-    }
-
-def execute_auto_rig_pro_mixamo_retarget(scene, keep_in_place=None, source_action_override=None):
-    source = scene.hrs_source_armature
-    target = scene.hrs_target_armature
-    if source is None or target is None:
-        raise RuntimeError("Select a source and target armature first.")
-    alignment = source_target_forward_alignment(scene, source, target)
-    original_source_matrix = source.matrix_world.copy()
-    try:
-        apply_source_forward_alignment(source, alignment)
-        result = _execute_auto_rig_pro_mixamo_retarget_aligned(
-            scene,
-            keep_in_place=keep_in_place,
-            source_action_override=source_action_override,
-        )
-        action = result.get("action")
-        if action is not None:
-            action["hrs_forward_alignment_applied"] = bool(alignment.get("applied"))
-            action["hrs_forward_alignment_degrees"] = float(alignment.get("degrees", 0.0))
-            action["hrs_forward_alignment_dot"] = float(alignment.get("forwardDot", 1.0))
-        result["forwardAlignmentApplied"] = bool(alignment.get("applied"))
-        result["forwardAlignmentDegrees"] = float(alignment.get("degrees", 0.0))
-        result["forwardAlignmentDot"] = float(alignment.get("forwardDot", 1.0))
-        return result
-    finally:
-        source.matrix_world = original_source_matrix
-        bpy.context.view_layer.update()
-
 def retarget_variant_key(keep_in_place):
     return "IN_PLACE" if keep_in_place else "ROOT_MOTION"
 
@@ -1268,18 +790,6 @@ def candidate_generated_retarget_actions(scene):
         if action not in actions:
             actions.append(action)
     return actions
-
-def is_auto_rig_temp_target_action(scene, action):
-    target = scene.hrs_target_armature
-    if not target or not action:
-        return False
-    if bool(action.get("hrs_retarget_result", False)):
-        return False
-    temp_base = f"{target.name}Action"
-    return strip_blender_numeric_suffix(action.name) == temp_base or action.name.startswith(f"{temp_base}.")
-
-def candidate_auto_rig_temp_actions(scene):
-    return [action for action in list(bpy.data.actions) if is_auto_rig_temp_target_action(scene, action)]
 
 def candidate_runtime_source_actions(scene, base_action=None):
     source = scene.hrs_source_armature
@@ -1455,37 +965,29 @@ def cleanup_retarget_artifacts(scene, allow_empty=False, reset_pose=True):
         raise RuntimeError("Select a source and target armature first.")
     target_action = animation_action_for_armature(target)
     target_action_generated = bool(target_action and is_generated_retarget_action(scene, target_action))
-    target_action_temp = bool(target_action and is_auto_rig_temp_target_action(scene, target_action))
-    if target_action and not target_action_generated and not target_action_temp and not allow_empty:
+    if target_action and not target_action_generated and not allow_empty:
         raise RuntimeError(f"The active target Action was not generated by this extension: {target_action.name}")
     base_action = source_base_action_for_retarget(source, target_action)
     generated_actions = candidate_generated_retarget_actions(scene)
     if target_action_generated and target_action not in generated_actions:
         generated_actions.append(target_action)
     runtime_actions = candidate_runtime_source_actions(scene, base_action)
-    temp_actions = candidate_auto_rig_temp_actions(scene)
-    if target_action_temp and target_action not in temp_actions:
-        temp_actions.append(target_action)
-    if not generated_actions and not runtime_actions and not temp_actions and not allow_empty:
+    if not generated_actions and not runtime_actions and not allow_empty:
         raise RuntimeError("No retarget result generated by this extension was found.")
     source.animation_data_create()
     if base_action:
         source.animation_data.action = base_action
-    if target.animation_data and (not target_action or target_action_generated or target_action_temp or generated_actions or temp_actions):
+    if target.animation_data and (not target_action or target_action_generated or generated_actions):
         target.animation_data.action = None
     nla_strips_removed = remove_nla_strips_using_actions(target, generated_actions)
-    nla_strips_removed += remove_nla_strips_using_actions(target, temp_actions)
     nla_strips_removed += remove_nla_strips_using_actions(source, runtime_actions)
     removed_actions = remove_actions_from_blender(generated_actions, source=source, target=target)
-    removed_temp_actions = remove_actions_from_blender(temp_actions, source=source, target=target)
     removed_runtime_actions = remove_actions_from_blender(runtime_actions, source=source, target=target)
     reset_count = reset_armature_pose_to_rest(target) if reset_pose else 0
-    clear_auto_rig_redefine_state(scene, source)
     restore_clean_retarget_context(scene, active=target)
     bpy.context.view_layer.update()
     return {
         "removedActions": removed_actions,
-        "removedTemporaryActions": removed_temp_actions,
         "restoredSourceAction": base_action.name if base_action else None,
         "removedRuntimeSourceActions": removed_runtime_actions,
         "resetBones": reset_count,
@@ -1561,66 +1063,6 @@ def remove_runtime_source_actions_after_retarget(scene, base_action):
     runtime_actions = candidate_runtime_source_actions(scene, base_action)
     remove_nla_strips_using_actions(source, runtime_actions)
     return remove_actions_from_blender(runtime_actions, source=source, target=scene.hrs_target_armature)
-
-def remove_auto_rig_temp_actions_after_retarget(scene, protected_actions=None):
-    protected = set(action for action in (protected_actions or []) if action)
-    actions = [action for action in candidate_auto_rig_temp_actions(scene) if action not in protected]
-    remove_nla_strips_using_actions(scene.hrs_target_armature, actions)
-    return remove_actions_from_blender(actions, source=scene.hrs_source_armature, target=scene.hrs_target_armature)
-
-def execute_auto_rig_pro_mixamo_retarget_pair(scene):
-    source = scene.hrs_source_armature
-    if not source:
-        raise RuntimeError("Select a source armature first.")
-    base_action = source_base_action_for_retarget(source)
-    if base_action is None:
-        raise RuntimeError("The source armature has no active Action for Auto-Rig Pro retargeting.")
-    motion_summary = update_source_motion_state(scene, base_action)
-    generate_in_place = not motion_summary["known"] or motion_summary["hasRootMotion"]
-    if not generate_in_place and scene.hrs_retarget_keep_in_place:
-        scene.hrs_retarget_keep_in_place = False
-    use_keep_in_place = bool(scene.hrs_retarget_keep_in_place)
-    cleanup = cleanup_retarget_artifacts(scene, allow_empty=True, reset_pose=True)
-    source.animation_data_create()
-    source.animation_data.action = base_action
-    protected_actions = []
-    try:
-        active_result = execute_auto_rig_pro_mixamo_retarget(
-            scene,
-            keep_in_place=use_keep_in_place,
-            source_action_override=base_action,
-        )
-        protected_actions.append(active_result["action"])
-        removed_runtime = remove_runtime_source_actions_after_retarget(scene, base_action)
-        removed_temp = remove_auto_rig_temp_actions_after_retarget(scene, protected_actions)
-        switch_source_motion_variant(scene, update_status=False)
-        selected_action = switch_retarget_variant(scene, update_status=False)
-    finally:
-        restore_clean_retarget_context(scene, active=scene.hrs_target_armature)
-    variants = {
-        active_result["variant"]: active_result["action"].name,
-    }
-    return {
-        "action": selected_action or active_result["action"],
-        "sourceAction": base_action,
-        "startFrame": active_result["startFrame"],
-        "endFrame": active_result["endFrame"],
-        "frames": active_result["frames"],
-        "pairs": active_result["pairs"],
-        "fcurves": action_fcurve_count(selected_action or active_result["action"]),
-        "root": active_result["root"],
-        "restDeltaNeeded": active_result["restDeltaNeeded"],
-        "maxRestAngle": active_result["maxRestAngle"],
-        "selectedRestSources": active_result["selectedRestSources"],
-        "sourceMapAssigned": active_result.get("sourceMapAssigned", 0),
-        "variants": variants,
-        "cleanup": cleanup,
-        "removedRuntimeSourceActions": removed_runtime,
-        "removedTemporaryActions": removed_temp,
-        "sourceRootMotionKnown": motion_summary["known"],
-        "sourceHasRootMotion": motion_summary["hasRootMotion"],
-        "sourceRootMotionDelta": motion_summary["delta"],
-    }
 
 def ensure_hrs_collection_uid(collection):
     if collection is None:
@@ -1709,16 +1151,11 @@ def execute_batch_retarget(scene):
             auto_guess_pair(scene, overwrite_manual=True)
             coverage = mapping_coverage(scene)
             posture_gate = retarget_posture_gate(scene)
-            use_arp_native = should_use_auto_rig_pro_native(scene)
             if not posture_gate["passed"]:
                 raise RuntimeError(f"{source.name}: {posture_gate['detail']}")
-            if not coverage["ready"] and not use_arp_native:
+            if not coverage["ready"]:
                 raise RuntimeError(f"{source.name}: no stable automatic workflow was found")
-            result = (
-                execute_auto_rig_pro_mixamo_retarget_pair(scene)
-                if use_arp_native
-                else bake_retarget_action(scene)
-            )
+            result = bake_retarget_action(scene)
             action = result["action"]
             action.name = batch_retarget_action_name(
                 source,
@@ -1750,7 +1187,7 @@ def execute_batch_retarget(scene):
                     "heightScale": float(analysis.get("heightScale", 1.0)),
                     "forwardDegrees": float(alignment.get("degrees", 0.0)),
                     "forwardApplied": bool(alignment.get("applied", False)),
-                    "route": "ARP_FK" if use_arp_native else "GENERIC",
+                    "route": "GENERIC",
                 }
             )
             target.animation_data_create()

@@ -13,13 +13,11 @@ Rig Bridge is a Blender add-on that automatically moves animation between humano
 - Root-motion or in-place output
 - Rest-pose and body-forward validation
 - Transactional batch cleanup and persistent generated actions
-- Optional optimized FK workflow when Auto-Rig Pro is installed
 
 ## Requirements
 
 - Blender 5.1 or newer
-- Two valid humanoid armatures for the generic workflow
-- Auto-Rig Pro is optional and is not bundled
+- Two valid humanoid armatures
 
 ## Installation
 
@@ -36,7 +34,7 @@ The submitted version is available from the [Blender Extensions review page](htt
 
 ## Quick Start
 
-1. Open the `Remap` tab in the 3D View sidebar.
+1. Open the `Motion Remap` tab in the 3D View sidebar.
 2. Choose a single animated armature or a collection of animated armatures.
 3. Choose the target humanoid armature.
 4. Run Auto Detect.
@@ -57,7 +55,7 @@ The runtime is split into focused modules for action handling, rig recognition, 
 
 ## Compatibility
 
-The generic retargeting path works without third-party add-ons. If Auto-Rig Pro is installed and a compatible target is detected, Rig Bridge can use its runtime operators for an optimized FK bake. No Auto-Rig Pro files or source code are included.
+Rig Bridge performs recognition and retargeting with its own code. It does not call operators or runtime properties from other add-ons. Bone layouts created by common rigging tools may still be recognized as input data.
 
 ## Known Limits
 

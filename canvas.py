@@ -1,7 +1,6 @@
 """Interactive humanoid figure drawing and manual correction controls."""
 
 import math
-import time
 from pathlib import Path
 
 import blf
@@ -35,21 +34,11 @@ from .core import (
 
 HRS_CANVAS_HANDLERS = []
 
-HRS_PANEL_DRAW_HANDLERS = []
-
 HRS_CANVAS_SHADER = None
 
 HRS_PREVIEW_COLLECTION = None
 
 HRS_FLOAT_CANVAS_STATE = {"action": None, "start_mouse": (0, 0), "start_rect": (0, 0, 0, 0)}
-
-HRS_PANEL_CLICK_MODAL_RUNNING = False
-
-HRS_PANEL_EMBEDDED_CLICK_ENABLED = False
-
-HRS_PANEL_WIDGET_STATE = {"region": None, "seen_at": 0.0}
-
-HRS_PANEL_WIDGET_TTL = 0.08
 
 HRS_FLOAT_CANVAS_MIN_WIDTH = 280
 
@@ -59,26 +48,11 @@ HRS_FLOAT_CANVAS_MAX_WIDTH = 760
 
 HRS_FLOAT_CANVAS_MAX_HEIGHT = 920
 
-HRS_PANEL_MIN_HEIGHT = 320
-
-HRS_PANEL_DEFAULT_HEIGHT = 560
-
-HRS_PANEL_MAX_HEIGHT = 820
-
-HRS_PANEL_TOP_OFFSET = 300
-
 HRS_PANEL_CANVAS_PAD_X = 28
 
 HRS_PANEL_CANVAS_PAD_TOP = 34
 
 HRS_PANEL_CANVAS_PAD_BOTTOM = 58
-
-HRS_PANEL_RESIZE_STATE = {
-    "active": False,
-    "region": None,
-    "start_mouse_y": 0,
-    "start_height": HRS_PANEL_DEFAULT_HEIGHT,
-}
 
 HRS_CANVAS_FIT_BOUNDS = (0.20, 0.08, 0.80, 0.88)
 
@@ -333,14 +307,6 @@ def draw_panel_humanoid_button_grid(layout, scene):
         draw_panel_finger_row(fingers.column(align=True), scene, "right")
 
 def draw_panel_humanoid(layout, scene):
-    if HRS_PANEL_EMBEDDED_CLICK_ENABLED:
-        mark_panel_figure_widget_visible()
-        canvas_box = layout.box()
-        canvas_box.scale_y = 0.95
-        for _index in range(panel_canvas_placeholder_rows(scene)):
-            canvas_box.label(text="")
-        return
-
     open_row = layout.row(align=True)
     open_row.scale_y = 1.25
     open_row.operator("hrs.open_humanoid_canvas", text="Open Humanoid Correction Panel", icon="OUTLINER_OB_ARMATURE")
@@ -353,39 +319,6 @@ def draw_panel_humanoid(layout, scene):
     toggle.prop(scene, "hrs_show_native_role_buttons", text="Detailed Correction Buttons", icon=icon, emboss=False)
     if show_buttons:
         draw_panel_humanoid_button_grid(layout, scene)
-
-def mark_panel_figure_widget_visible():
-    region = getattr(bpy.context, "region", None)
-    if region is None or getattr(region, "type", "") != "UI":
-        return
-    HRS_PANEL_WIDGET_STATE["region"] = region.as_pointer()
-    HRS_PANEL_WIDGET_STATE["seen_at"] = time.monotonic()
-
-def panel_figure_widget_is_live(region):
-    if not HRS_PANEL_EMBEDDED_CLICK_ENABLED:
-        return False
-    if region is None or getattr(region, "type", "") != "UI":
-        return False
-    if HRS_PANEL_WIDGET_STATE.get("region") != region.as_pointer():
-        return False
-    return time.monotonic() - HRS_PANEL_WIDGET_STATE.get("seen_at", 0.0) <= HRS_PANEL_WIDGET_TTL
-
-def clamp_panel_canvas_height(value):
-    return max(HRS_PANEL_MIN_HEIGHT, min(HRS_PANEL_MAX_HEIGHT, int(value)))
-
-def panel_canvas_height(scene):
-    return clamp_panel_canvas_height(getattr(scene, "hrs_panel_canvas_height", HRS_PANEL_DEFAULT_HEIGHT))
-
-def panel_canvas_placeholder_rows(scene):
-    return max(9, min(30, round(panel_canvas_height(scene) / 30)))
-
-def panel_figure_bounds(region, scene=None):
-    height = panel_canvas_height(scene) if scene is not None else HRS_PANEL_DEFAULT_HEIGHT
-    width = min(max(260, region.width - 30), 640)
-    x0 = (region.width - width) * 0.5
-    y1 = region.height - HRS_PANEL_TOP_OFFSET
-    y0 = y1 - height
-    return x0, y0, width, height
 
 def canvas_point_from_fitted_uv(u, v):
     left, top, right, bottom = HRS_CANVAS_FIT_BOUNDS
@@ -414,65 +347,6 @@ def canvas_view_rect(rect):
 def point_in_canvas_fit_bounds(point):
     left, top, right, bottom = HRS_CANVAS_FIT_BOUNDS
     return left <= point[0] <= right and top <= point[1] <= bottom
-
-def role_from_panel_figure_uv(scene, u, v):
-    # u/v are normalized image coordinates, with v=0 at the top of the figure.
-    if not (0.0 <= u <= 1.0 and 0.0 <= v <= 1.0):
-        return None
-    point = canvas_point_from_fitted_uv(u, v)
-    if not point_in_canvas_fit_bounds(point):
-        return None
-    return figure_role_at(scene.hrs_neck_count, scene.hrs_spine_count, scene.hrs_show_fingers, point)
-
-def panel_ui_event_position(context, event):
-    for area in context.screen.areas:
-        if area.type != "VIEW_3D":
-            continue
-        ui_region = next((region for region in area.regions if region.type == "UI"), None)
-        if not ui_region:
-            continue
-        if not (ui_region.x <= event.mouse_x <= ui_region.x + ui_region.width):
-            continue
-        if not (ui_region.y <= event.mouse_y <= ui_region.y + ui_region.height):
-            continue
-        if not panel_figure_widget_is_live(ui_region):
-            return None
-        return ui_region, event.mouse_x - ui_region.x, event.mouse_y - ui_region.y
-    return None
-
-def panel_resize_handle_rects(region, scene):
-    x0, y0, width, _height = panel_figure_bounds(region, scene)
-    center_x = x0 + width * 0.5
-    grip_width = min(92, max(56, width * 0.18))
-    return (
-        (center_x - grip_width * 0.5, y0 + 5, center_x + grip_width * 0.5, y0 + 18),
-        (center_x - grip_width * 0.68, y0 - 42, center_x + grip_width * 0.68, y0 - 20),
-    )
-
-def panel_resize_handle_from_event(context, event):
-    hit = panel_ui_event_position(context, event)
-    if hit is None:
-        return None
-    ui_region, rx, ry = hit
-    for rect in panel_resize_handle_rects(ui_region, context.scene):
-        x0, y0, x1, y1 = rect
-        if x0 <= rx <= x1 and y0 <= ry <= y1:
-            return ui_region
-    return None
-
-def panel_figure_role_from_event(context, event):
-    hit = panel_ui_event_position(context, event)
-    if hit is None:
-        return None
-    ui_region, rx, ry = hit
-    rect = panel_figure_bounds(ui_region, context.scene)
-    x0, y0, width, height = rect
-    if not (x0 <= rx <= x0 + width and y0 <= ry <= y0 + height):
-        return None
-    point = canvas_from_screen(rect, rx, ry)
-    if not point_in_canvas_fit_bounds(point):
-        return None
-    return figure_role_at(context.scene.hrs_neck_count, context.scene.hrs_spine_count, context.scene.hrs_show_fingers, point)
 
 def canvas_shader():
     global HRS_CANVAS_SHADER
@@ -848,15 +722,6 @@ def draw_pixel_rect(rect, fill_color, line_color=None):
     if line_color is not None:
         draw_canvas_batch([*vertices, vertices[0]], "LINE_STRIP", line_color)
 
-def draw_panel_resize_handles(region, scene):
-    active = HRS_PANEL_RESIZE_STATE.get("active")
-    inner, _outer = panel_resize_handle_rects(region, scene)
-    color = (0.95, 0.54, 0.18, 0.95) if active else (0.72, 0.72, 0.68, 0.62)
-    outline = (0.08, 0.08, 0.08, 0.70) if active else (0.02, 0.02, 0.02, 0.55)
-    x0, y0, x1, y1 = inner
-    grip = (x0 + 8, y0 + 5, x1 - 8, y1 - 5)
-    draw_pixel_rect(grip, color, outline)
-
 def draw_float_canvas_frame(rect, scene):
     x, y, width, height = rect
     draw_canvas_batch(
@@ -925,27 +790,6 @@ def draw_humanoid_shapes(rect, scene, label_size_body=10, label_size_finger=8, s
             label_size = label_size_finger if shape["role_id"] in FINGER_ROLE_IDS else label_size_body
             draw_canvas_text(shape["label"], center[0], center[1], size=label_size)
 
-def draw_panel_humanoid_widget():
-    context = bpy.context
-    region = getattr(context, "region", None)
-    scene = getattr(context, "scene", None)
-    if region is None or scene is None or getattr(region, "type", "") != "UI":
-        return
-    if not hasattr(scene, "hrs_mapping_slots"):
-        return
-    if not panel_figure_widget_is_live(region):
-        return
-
-    rect = panel_figure_bounds(region, scene)
-    gpu.state.blend_set("ALPHA")
-    try:
-        # The real Blender panel already draws the box behind this placeholder;
-        # keep the GPU layer transparent so the figure reads as part of the panel.
-        draw_humanoid_shapes(rect, scene, label_size_body=9, label_size_finger=6, show_labels=False)
-        draw_panel_resize_handles(region, scene)
-    finally:
-        gpu.state.blend_set("NONE")
-
 def draw_humanoid_canvas():
     context = bpy.context
     region = getattr(context, "region", None)
@@ -968,25 +812,6 @@ def clear_humanoid_canvas_handlers():
             bpy.types.SpaceView3D.draw_handler_remove(handler, "WINDOW")
         except ValueError:
             pass
-
-def clear_humanoid_panel_draw_handlers():
-    while HRS_PANEL_DRAW_HANDLERS:
-        handler = HRS_PANEL_DRAW_HANDLERS.pop()
-        try:
-            bpy.types.SpaceView3D.draw_handler_remove(handler, "UI")
-        except ValueError:
-            pass
-
-def ensure_humanoid_panel_draw_handler():
-    if HRS_PANEL_DRAW_HANDLERS:
-        return
-    handler = bpy.types.SpaceView3D.draw_handler_add(
-        draw_panel_humanoid_widget,
-        (),
-        "UI",
-        "POST_PIXEL",
-    )
-    HRS_PANEL_DRAW_HANDLERS.append(handler)
 
 class HRS_OT_open_humanoid_canvas(Operator):
     bl_idname = "hrs.open_humanoid_canvas"
@@ -1099,99 +924,3 @@ class HRS_OT_open_humanoid_canvas(Operator):
             return {"RUNNING_MODAL"}
 
         return {"PASS_THROUGH"}
-
-class HRS_OT_panel_figure_modal(Operator):
-    bl_idname = "hrs.panel_figure_modal"
-    bl_label = "Humanoid Panel Interaction"
-    bl_options = {"INTERNAL"}
-
-    def invoke(self, context, _event):
-        global HRS_PANEL_CLICK_MODAL_RUNNING
-        if HRS_PANEL_CLICK_MODAL_RUNNING:
-            return {"CANCELLED"}
-        HRS_PANEL_CLICK_MODAL_RUNNING = True
-        context.window_manager.modal_handler_add(self)
-        return {"RUNNING_MODAL"}
-
-    def modal(self, context, event):
-        global HRS_PANEL_CLICK_MODAL_RUNNING
-        if not context.scene or "humanoid_remap_studio" not in context.preferences.addons:
-            HRS_PANEL_CLICK_MODAL_RUNNING = False
-            return {"CANCELLED"}
-
-        if HRS_PANEL_RESIZE_STATE.get("active"):
-            if event.type == "MOUSEMOVE":
-                delta = event.mouse_y - HRS_PANEL_RESIZE_STATE["start_mouse_y"]
-                context.scene.hrs_panel_canvas_height = clamp_panel_canvas_height(
-                    HRS_PANEL_RESIZE_STATE["start_height"] - delta
-                )
-                for area in context.screen.areas:
-                    if area.type == "VIEW_3D":
-                        area.tag_redraw()
-                return {"RUNNING_MODAL"}
-            if event.type == "LEFTMOUSE" and event.value == "RELEASE":
-                HRS_PANEL_RESIZE_STATE["active"] = False
-                for area in context.screen.areas:
-                    if area.type == "VIEW_3D":
-                        area.tag_redraw()
-                return {"RUNNING_MODAL"}
-            if event.type in {"ESC", "RIGHTMOUSE"}:
-                HRS_PANEL_RESIZE_STATE["active"] = False
-                return {"RUNNING_MODAL"}
-
-        if event.type == "LEFTMOUSE" and event.value == "PRESS":
-            resize_region = panel_resize_handle_from_event(context, event)
-            if resize_region is not None:
-                HRS_PANEL_RESIZE_STATE.update(
-                    {
-                        "active": True,
-                        "region": resize_region.as_pointer(),
-                        "start_mouse_y": event.mouse_y,
-                        "start_height": panel_canvas_height(context.scene),
-                    }
-                )
-                return {"RUNNING_MODAL"}
-
-            role_id = panel_figure_role_from_event(context, event)
-            if not role_id:
-                return {"PASS_THROUGH"}
-            try:
-                slot = assign_selected_bone_to_role(context, role_id)
-            except ValueError as exc:
-                self.report({"ERROR"}, str(exc))
-                return {"RUNNING_MODAL"}
-            target = slot.source_bone if context.scene.hrs_assign_mode == "SOURCE" else slot.target_bone
-            self.report({"INFO"}, f"{canvas_short_label(context.scene, role_id)} -> {target}")
-            for area in context.screen.areas:
-                if area.type == "VIEW_3D":
-                    area.tag_redraw()
-            return {"RUNNING_MODAL"}
-
-        return {"PASS_THROUGH"}
-
-def start_panel_figure_modal():
-    if HRS_PANEL_CLICK_MODAL_RUNNING:
-        return None
-    wm = bpy.context.window_manager
-    for window in wm.windows:
-        screen = window.screen
-        for area in screen.areas:
-            if area.type != "VIEW_3D":
-                continue
-            region = next((item for item in area.regions if item.type == "WINDOW"), None)
-            if region is None:
-                continue
-            override = {
-                "window": window,
-                "screen": screen,
-                "area": area,
-                "region": region,
-                "scene": bpy.context.scene,
-            }
-            try:
-                with bpy.context.temp_override(**override):
-                    bpy.ops.hrs.panel_figure_modal("INVOKE_DEFAULT")
-                return None
-            except Exception:
-                continue
-    return 1.0

@@ -14,7 +14,6 @@ from .canvas import (
     compact_ui_status,
 )
 from .retarget import (
-    candidate_auto_rig_temp_actions,
     candidate_batch_retarget_actions,
     candidate_generated_retarget_actions,
     candidate_runtime_source_actions,
@@ -119,7 +118,6 @@ class HRS_PT_main(Panel):
                 and (
                     candidate_generated_retarget_actions(scene)
                     or candidate_runtime_source_actions(scene)
-                    or candidate_auto_rig_temp_actions(scene)
                 )
             )
         clear_col.operator("hrs.clear_retarget_result", text="Clear Result", icon="TRASH")
