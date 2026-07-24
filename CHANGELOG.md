@@ -4,6 +4,13 @@ All notable changes to Rig Bridge are documented here.
 
 ## [Unreleased]
 
+## [0.1.66] - 2026-07-24
+
+### Changed
+
+- Expanded the declared and tested Blender compatibility range to 4.2 through 5.2
+- Updated installation documentation after approval in the official Blender Extensions catalog
+
 ## [0.1.65] - 2026-07-24
 
 ### Fixed

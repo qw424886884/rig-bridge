@@ -16,14 +16,14 @@ Rig Bridge is a Blender add-on that automatically moves animation between humano
 
 ## Requirements
 
-- Blender 5.1 or newer
+- Blender 4.2 through 5.2
 - Two valid humanoid armatures
 
 ## Installation
 
 ### Blender Extensions
 
-The submitted version is available from the [Blender Extensions review page](https://extensions.blender.org/approval-queue/humanoid-remap-studio/). Until catalog review is complete, download the ZIP there and use Install from Disk. Catalog search in Blender becomes available after approval.
+Install Rig Bridge from its [official Blender Extensions page](https://extensions.blender.org/add-ons/humanoid-remap-studio/) or search for `Rig Bridge` in Blender's Get Extensions view.
 
 ### Install from Disk
 
