@@ -4,6 +4,18 @@ All notable changes to Rig Bridge are documented here.
 
 ## [Unreleased]
 
+## [0.1.65] - 2026-07-24
+
+### Fixed
+
+- Added the missing humanoid segment constants used by the interactive canvas
+- Added the missing 3D View utility import used by viewport armature picking
+- Removed stale dynamic import guards and unused imports that obscured static analysis
+
+### Changed
+
+- Added a source-level Ruff gate for Python syntax and undefined-name checks
+
 ## [0.1.64] - 2026-07-21
 
 ### Changed

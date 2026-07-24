@@ -1,7 +1,7 @@
 """Blender operators and mapping slot data types."""
 
 import bpy
-from bpy.props import BoolProperty, EnumProperty, FloatProperty, StringProperty
+from bpy.props import EnumProperty, FloatProperty, StringProperty
 from bpy.types import Operator, PropertyGroup
 
 from .core import (

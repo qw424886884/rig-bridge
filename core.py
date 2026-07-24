@@ -1,10 +1,9 @@
 """Humanoid recognition, validation, mapping, and batch analysis."""
 
-import json
 import math
-import time
 
 import bpy
+from bpy_extras import view3d_utils
 from mathutils import Matrix, Vector
 
 from .armature_scan import analyze_humanoid_roles
@@ -14,8 +13,6 @@ from .human_schema import (
     HUMAN_ROLES,
     MAX_NECK_COUNT,
     MAX_SPINE_COUNT,
-    neck_roles,
-    spine_roles,
     visible_role_ids,
 )
 from .matcher import (
@@ -25,11 +22,8 @@ from .matcher import (
     score_name_for_role,
 )
 from .preset_catalog import (
-    audit_preset_sample_sets,
     best_matching_preset,
-    classify_bone_names,
     preset_role_matches,
-    public_preset_profiles,
 )
 
 from .actions import (
@@ -297,7 +291,7 @@ def armature_preset_profile(armature):
     return best_matching_preset(armature_bone_names(armature), object_name=armature.name)
 
 def armature_action_name_hint(armature):
-    action = animation_action_for_armature(armature) if "animation_action_for_armature" in globals() else None
+    action = animation_action_for_armature(armature)
     return action.name.lower() if action else ""
 
 def core_topology_coverage(armature, min_score=HRS_STRUCTURAL_CORE_MIN_SCORE):
@@ -647,7 +641,7 @@ def armature_rest_posture_quality(scene, armature):
 def retarget_posture_gate(scene):
     selected_source = scene.hrs_source_armature
     source = selected_source
-    if selected_source and "resolved_retarget_source" in globals():
+    if selected_source:
         source = resolved_retarget_source(scene).get("source") or selected_source
     target = scene.hrs_target_armature
     source_quality = armature_rest_posture_quality(scene, source) if source else None
@@ -1013,7 +1007,7 @@ def action_root_motion_summary(scene, armature, action=None):
     return summary
 
 def update_source_motion_state(scene, action=None):
-    if action is None and "source_base_action_for_retarget" in globals():
+    if action is None:
         action = source_base_action_for_retarget(scene.hrs_source_armature)
     summary = action_root_motion_summary(scene, scene.hrs_source_armature, action)
     if hasattr(scene, "hrs_source_root_motion_known"):
@@ -1073,7 +1067,7 @@ def update_auto_summary(scene, assigned=0):
         )
     elif coverage["ready"]:
         scene.hrs_auto_detail = (
-            f"Both rigs were identified as humanoid from hierarchy features; the generic automatic retarget workflow will run."
+            "Both rigs were identified as humanoid from hierarchy features; the generic automatic retarget workflow will run."
         )
     else:
         scene.hrs_auto_detail = (

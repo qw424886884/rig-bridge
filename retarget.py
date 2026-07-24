@@ -1,7 +1,6 @@
 """Animation retargeting, baking, variant switching, and cleanup."""
 
 import json
-import math
 import time
 import uuid
 

@@ -8,15 +8,13 @@ import bpy
 import bpy.utils.previews
 import gpu
 from bpy.types import Operator
-from bpy_extras import view3d_utils
 from gpu_extras.batch import batch_for_shader
-from mathutils import Vector
 
-from .figure_layout import figure_layout_shapes, figure_role_at
+from .figure_layout import figure_layout_shapes
 from .human_schema import (
     FINGER_ROLE_IDS,
-    HUMAN_ROLE_BY_ID,
-    HUMAN_ROLES,
+    MAX_NECK_COUNT,
+    MAX_SPINE_COUNT,
     neck_roles,
     spine_roles,
 )
@@ -25,7 +23,6 @@ from .core import (
     assign_selected_bone_to_role,
     ensure_slots,
     existing_slot_for_role,
-    role_ids,
     role_label,
     selected_pose_bone,
     slot_badge,
@@ -422,7 +419,6 @@ def clamp_float_canvas_rect(region, x, y, width, height):
     return x, y, width, height
 
 def default_float_canvas_rect(region):
-    region_width = max(1, region.width)
     region_height = max(1, region.height)
     height = min(680, max(500, int(region_height * 0.76)))
     width = min(380, max(320, int(height * 0.58)))
